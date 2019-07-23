@@ -42,10 +42,8 @@ def app_main():
         metainfo = {}
         metainfo["system_prefix"] = controller.system_prefix
         metainfo["system_anchor"] = controller.system_anchor.name
-        metainfo["available_devices"] = "" # len(server.get_devices_info())
+        metainfo["available_devices"] = str(len(controller.get_devices()))
         # The following code is only for sample use
-        metainfo["available_devices"] = "2"
-        # Sample code end. Delete the code when in real development
         return render_template('system-overview.html', metainfo = metainfo)
 
     ### bootstrapping
@@ -67,18 +65,18 @@ def app_main():
     ### device list
     @app.route('/device-list')
     def device_list():
-        device_list=[] #server.get_devices()
+        device_list= controller.get_devices()
         # The following code is only for sample use
-        device_list=[
-            {
-                "device_name": "/myhome/bedroom/light-0-1",
-                "device_info": "Philips LED light"
-            },
-            {
-                "device_name": "/myhome/livingroom/printer-A",
-                "device_info": "HP Printer X580"
-            }
-        ]
+        # device_list=[
+        #     {
+        #         "device_name": "/myhome/bedroom/light-0-1",
+        #         "device_info": "Philips LED light"
+        #     },
+        #     {
+        #         "device_name": "/myhome/livingroom/printer-A",
+        #         "device_info": "HP Printer X580"
+        #     }
+        # ]
         # Sample code end. Delete the code when in real development
         return render_template('device-list.html', device_list=device_list)
 
@@ -91,7 +89,7 @@ def app_main():
     ### service list
     @app.route('/service-list')
     def service_list():
-        service_list=[] #server.get_services()
+        service_list = controller.get_services()
         # The following code is only for sample use
         service_list=[
             {
@@ -106,7 +104,7 @@ def app_main():
             }
         ]
         # Sample code end. Delete the code when in real development
-        fields = list(service_list[0].keys())
+        fields = list(['service_id','service_info','available_commands'])
         fields_collapse = [field for field in set(fields) - {'service_id'}]
         return render_template('service-list.html', service_list=service_list,
                                fields_collapse=fields_collapse)
@@ -123,34 +121,34 @@ def app_main():
     ### access control
     @app.route('/access-control')
     def access_control():
-        service_prefix_list=[] #server.get_service_prefixes()
+        service_prefix_list = controller.get_accesses()
         # The following code is only for sample use
-        service_prefix_list=[
-            {
-                "prefix": "/myhome/(ALL/)SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/livingroom/(ALL/)SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/livingroom/printer-A/SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/(ALL/)SD/LED",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/bedroom(ALL/)/SD/LED",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/bedroom/light-0-1/SD/LED",
-                "access_type": "Controller Only",
-            }
-        ]
+        # service_prefix_list=[
+        #     {
+        #         "prefix": "/myhome/(ALL/)SD/printer",
+        #         "access_type": "Controller Only",
+        #     },
+        #     {
+        #         "prefix": "/myhome/livingroom/(ALL/)SD/printer",
+        #         "access_type": "Controller Only",
+        #     },
+        #     {
+        #         "prefix": "/myhome/livingroom/printer-A/SD/printer",
+        #         "access_type": "Controller Only",
+        #     },
+        #     {
+        #         "prefix": "/myhome/(ALL/)SD/LED",
+        #         "access_type": "Controller Only",
+        #     },
+        #     {
+        #         "prefix": "/myhome/bedroom(ALL/)/SD/LED",
+        #         "access_type": "Controller Only",
+        #     },
+        #     {
+        #         "prefix": "/myhome/bedroom/light-0-1/SD/LED",
+        #         "access_type": "Controller Only",
+        #     }
+        # ]
         # Sample code end. Delete the code when in real development
         return render_template('access-control.html', service_prefix_list=service_prefix_list)
 

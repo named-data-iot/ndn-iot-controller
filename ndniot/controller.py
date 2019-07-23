@@ -4,17 +4,45 @@ import threading
 from pyndn import Face, Interest, Data, Name, NetworkNack
 from pyndn.security import KeyChain, Pib
 from pyndn.encoding import ProtobufTlv
+import pyndn.transport
 from pyndn.transport.unix_transport import UnixTransport
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
 from .asyncndn import fetch_data_packet, decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
 import plyvel
+import pickle
 
 default_prefix = b"/ndn-iot"
+controller_host = "127.0.0.1"
+controller_port = 6363
 
 def run_until_complete(event):
     asyncio.set_event_loop(asyncio.new_event_loop())
     return asyncio.get_event_loop().run_until_complete(event)
+
+
+# KEY-VALUE pair in Database
+
+# The Value is converted to bytes using Pickle serialization
+#
+# KEY                       DEFAULT VALUE            FORMAT (when running)
+#
+# system_prefix             /ndn-iot                 String
+# device_list               []                       [{"device_name": String,
+#                                                       "device_info":String,
+#                                                       "device_certificate":Byte
+#                                                      }]
+# service_list              []                       [{
+#                                                       "service_id": String,
+#                                                       "service_info": String,
+#                                                       "available_commands": String
+#                                                      }]
+# access_list               []                       [{
+#                                                       "prefix": String,
+#                                                       "access_type": Number, //1 - controller only,2 - under-same-prefix,3 - no-control
+#                                                       "encryption_key": Byte
+#                                                       "decryption_key": Byte
+#                                                      }]
 
 class Controller:
     def __init__(self, emit_func):
@@ -25,6 +53,10 @@ class Controller:
         self.system_prefix = None
         self.system_anchor = None
         self.db = None
+        self.device_list = None
+        self.service_list = None
+        self.access_list = None
+        self.udp_transport = None
 
     def system_init(self):
         # create or get existing state
@@ -40,6 +72,11 @@ class Controller:
         # 1. DEVICES: get all the certificates for devices from storage
         # 2. SERVICES: get service list and corresponding providers
         # 3. ACCESS CONTROL: get all the encryption/decryption key pairs
+
+        # b'\x80\x03]q\x00.' is the binary form of []
+        self.device_list = pickle.loads(self.db.get(b'device_list',b'\x80\x03]q\x00.'))
+        self.service_list = pickle.loads(self.db.get(b'service_list',b'\x80\x03]q\x00.'))
+        self.access_list = pickle.loads(self.db.get(b'access_list',b'\x80\x03]q\x00.'))
 
         # Step Three: Networking
         # 1. Create NFD's UDP Multicast Face, BLE Multicast Face, etc.
@@ -118,6 +155,16 @@ class Controller:
         thread.start()
         done.wait()
         return controller
+
+
+    def get_devices(self):
+        return self.device_list
+
+    def get_services(self):
+        return self.service_list
+
+    def get_accesses(self):
+        return self.access_list
 
 if __name__ == "__main__":
     emit = "emit"
