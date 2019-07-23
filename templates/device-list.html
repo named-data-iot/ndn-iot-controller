@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>General Status</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <h2>Device List</h2>
+  <table>
+    <tr>
+      <th>Device Name</th>
+      <th>Info</th>
+      <th>Management</th>
+    </tr>
+    {% for item in device_list %}
+    <tr>
+      <td>{{ item['device_name']|e }}</td>
+      <td>{{ item['device_info']|e }}</td>
+      <td>
+        <form action="../exec/remove-device" method="post">
+          <input type="hidden" name="device_name" value={{ item["device_name"] }}>
+          <button type="submit">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if st_code %}
+    <p>{{ st_code }} {{ st_text }}</p>
+  {% endif %}
+</body>
+</html>

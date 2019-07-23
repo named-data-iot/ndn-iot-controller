@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>General Status</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <h2>IoT System Overview</h2>
+  <table>
+    {% for key, value in metainfo.items() %}
+    <tr>
+      <td>{{ key|e }}</td>
+      <td>{{ value|e }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

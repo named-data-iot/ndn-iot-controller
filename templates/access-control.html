@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Access Control</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <h1>Control Access Rights of each service</h1>
+  <table>
+    <caption>Services</caption>
+    <tr>
+      <th>Service Invocation Prefix</th>
+      <th>Access Rights</th>
+      <th>Access Rights Update</th>
+    </tr>
+    {% for item in service_prefix_list %}
+    <tr>
+      <td>{{ item['prefix']|e }}</td>
+      <td>
+          {{ item['access_type']|e }}
+      </td>
+      <td>
+          <form action="../exec/update-access-rights" method="post">
+            <p>
+              <input type="hidden" name="service_prefix" id="service_prefix" value={{ item["prefix"] }}/>
+            </p>
+            <p>
+              <input type="radio" name="controller_only" id="can_be_prefix" value="CO" checked> Controller-Only
+              <br>
+              <input type="radio" name="under_same_prefix" id="under_same_prefix" value="US"> Under-Same-Prefix
+              <br>
+              <input type="radio" name="unlimited" id="unlimited" value="NO"> No-Control
+            </p>
+            <p>
+              <button type="submit">Update Access Rights</button>
+            </p>
+          </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if st_code %}
+    <p>{{ st_code }} {{ st_text }}</p>
+  {% endif %}
+</body>
+</html>

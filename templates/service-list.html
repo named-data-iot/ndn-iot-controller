@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>General Status</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <h2>Service List</h2>
+  <table>
+    <tr>
+      <th>Service ID</th>
+      <th>Service Providers</th>
+    </tr>
+    {% for item in service_list %}
+    <tr>
+      <td>{{ item['service_id']|e }}</td>
+      <td>
+          <details>
+              <summary>Details</summary>
+              {% for field in fields_collapse %}
+                {{ field + ": " + item[field]|e }}<br>
+              {% endfor %}
+          </details>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if st_code %}
+    <p>{{ st_code }} {{ st_text }}</p>
+  {% endif %}
+</body>
+</html>

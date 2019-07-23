@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>General Status</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+  <form action="../exec/bootstrapping" method="post">
+    <p>
+      <label for="shared_secret">Shared Secret from the Device</label>
+      <input type="text" name="shared_secret" id="shared_secret"/>
+    </p>
+    <p>
+      <button type="submit">Bootstrap</button>
+    </p>
+  </form>
+  {% if st_code %}
+    <p>{{ st_code }} {{ st_text }}</p>
+  {% endif %}
+</body>
+</html>
