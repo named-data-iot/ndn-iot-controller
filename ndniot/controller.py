@@ -8,8 +8,9 @@ from pyndn.transport.unix_transport import UnixTransport
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
 from .asyncndn import fetch_data_packet, decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
+import plyvel
 
-default_prefix = "/ndn-iot"
+default_prefix = b"/ndn-iot"
 
 def run_until_complete(event):
     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -23,12 +24,17 @@ class Controller:
         self.face = None
         self.system_prefix = None
         self.system_anchor = None
+        self.db = None
 
     def system_init(self):
         # create or get existing state
         # Step One: Meta Info
         # 1. get system prefix from storage (from Level DB)
         # 2. get system root anchor certificate and private key (from keychain)
+        self.db = plyvel.DB('./storage/',create_if_missing=True)
+        self.system_prefix = Name(self.db.get(b'system_prefix', default_prefix).decode("utf-8"))
+        cur_id = self.keychain.createIdentityV2(self.system_prefix)
+        self.system_anchor = cur_id.getDefaultKey().getDefaultCertificate()
 
         # Step Two: App Layer Support (from Level DB)
         # 1. DEVICES: get all the certificates for devices from storage
@@ -40,10 +46,6 @@ class Controller:
         # 2. Set up NFD's route from IoT system prefix to multicast faces
         # 3. Set up NFD's multicast strategy for IoT system namespace
 
-        # Temp Code, Please delete afterwards
-        self.system_prefix = Name(default_prefix)
-        cur_id = self.keychain.createIdentityV2(self.system_prefix)
-        self.system_anchor = cur_id.getDefaultKey().getDefaultCertificate()
 
     def blocking_express_interest(self, interest):
         ret = run_until_complete(fetch_data_packet(self.face, interest))
