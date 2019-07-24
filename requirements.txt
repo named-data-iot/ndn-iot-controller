@@ -15,5 +15,4 @@ python-socketio>=4.1.0
 six>=1.12.0
 Werkzeug>=0.15.4
 pystray>=0.14.4
-Pillow>=6.1.0
 plyvel>=1.1.0

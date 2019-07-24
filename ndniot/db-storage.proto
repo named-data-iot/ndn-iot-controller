@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+message DeviceItem {
+    string device_id = 1;
+    string device_info = 2;
+    string device_cert_name = 3;
+}
+
+message DeviceList {
+    repeated DeviceItem device = 1;
+}
+
+message ServiceItem {
+    string service_id = 1;
+    string service_info = 2;
+    repeated string available_commands = 3;
+}
+
+message ServiceList {
+    repeated ServiceItem service = 1;
+}
+
+message AccessItem {
+    string prefix = 1;
+    Access_Type type = 2;
+    string encryption_key = 3;
+    string decryption_key = 4;
+
+    enum Access_Type {
+        NO_LIMITATION = 0;
+        CONTROLLER_ONLY = 1;
+        UNDER_SAME_PREFIX = 2;
+    }
+}
+
+message AccessList {
+    repeated AccessItem access = 1;
+}

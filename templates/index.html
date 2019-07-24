@@ -14,19 +14,19 @@
       <h2 class="title">NDN IoT Controller</h2>
       <input type="text" id="menu_search" onkeyup="do_menu_search()" placeholder="Search ..." title="Type in a category">
       <div id="div_menu_items">
-        <input type="button" value="System Overview" onclick="set_content('http://localhost:5000/system-overview')">
-        <input type="button" value="Device Bootstrapping" onclick="set_content('http://localhost:5000/bootstrapping')">
-        <input type="button" value="Device List" onclick="set_content('http://localhost:5000/device-list')">
-        <input type="button" value="Service List" onclick="set_content('http://localhost:5000/service-list')">
-        <input type="button" value="Invoke Service" onclick="set_content('http://localhost:5000/invoke-service')">
-        <input type="button" value="Access Control" onclick="set_content('http://localhost:5000/access-control')">
-        <input type="button" value="NDN Ping" onclick="set_content('http://localhost:5000/ndn-ping')">
+        <input type="button" value="System Overview" onclick="set_content('http://localhost:5001/system-overview')">
+        <input type="button" value="Device Bootstrapping" onclick="set_content('http://localhost:5001/bootstrapping')">
+        <input type="button" value="Device List" onclick="set_content('http://localhost:5001/device-list')">
+        <input type="button" value="Service List" onclick="set_content('http://localhost:5001/service-list')">
+        <input type="button" value="Invoke Service" onclick="set_content('http://localhost:5001/invoke-service')">
+        <input type="button" value="Access Control" onclick="set_content('http://localhost:5001/access-control')">
+        <input type="button" value="NDN Ping" onclick="set_content('http://localhost:5001/ndn-ping')">
       </div>
     </div>
 
     <div class="content">
       <iframe id="content_frame" height="100%" width="100%" style="border:1px solid gray;" 
-              src="http://localhost:5000/system-overview"></iframe>
+              src="http://localhost:5001/system-overview"></iframe>
     </div>
   </div>
 </body>

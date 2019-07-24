@@ -9,7 +9,6 @@ from flask import Flask, redirect, render_template, request, url_for
 from flask_socketio import SocketIO
 from pyndn import Interest, Data, NetworkNack
 
-
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
                         datefmt='%Y-%m-%d %H:%M:%S',
@@ -27,23 +26,25 @@ def app_main():
     socketio = SocketIO(app, async_mode='threading')
     controller = Controller.start_controller(socketio.emit)
 
-
     def run_until_complete(event):
         asyncio.set_event_loop(asyncio.new_event_loop())
         return asyncio.get_event_loop().run_until_complete(event)
 
     @app.route('/')
     def index():
+        if controller.networking_ready is not True:
+            run_until_complete(controller.iot_connectivity_init())
         return render_template('index.html')
-
 
     @app.route('/system-overview')
     def system_overview():
         metainfo = {}
         metainfo["system_prefix"] = controller.system_prefix
-        metainfo["system_anchor"] = controller.system_anchor.name
-        metainfo["available_devices"] = str(len(controller.get_devices()))
-        # The following code is only for sample use
+        metainfo["system_anchor"] = controller.system_anchor.name.toUri()
+        if controller.device_list.IsInitialized() is True:
+            metainfo["available_devices"] = str(len(controller.device_list.device))
+        if controller.service_list.IsInitialized() is True:
+            metainfo["available_services"] = str(len(controller.service_list.service))
         return render_template('system-overview.html', metainfo = metainfo)
 
     ### bootstrapping
@@ -121,7 +122,7 @@ def app_main():
     ### access control
     @app.route('/access-control')
     def access_control():
-        service_prefix_list = controller.get_accesses()
+        service_prefix_list = controller.access_list
         # The following code is only for sample use
         # service_prefix_list=[
         #     {
@@ -175,7 +176,7 @@ def app_main():
         interest.mustBeFresh = must_be_fresh
         interest.interestLifetimeMilliseconds = interest_lifetime
         st_time = time.time()
-        ret = controller.blocking_express_interest(interest)
+        ret = run_until_complete(controller.express_interest(interest))
         ed_time = time.time()
         response_time = '{:.3f}s'.format(ed_time - st_time)
         return render_template('ndn-ping.html', response_time=response_time, **ret)
@@ -198,7 +199,7 @@ def app_main():
     #     subprocess.run('nfd-stop')
     #     return redirect('/nfd-management')
 
-    socketio.run(app)
+    socketio.run(app, port=5001)
 
 if __name__ == '__main__':
     app_main()
