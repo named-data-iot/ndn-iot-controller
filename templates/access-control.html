@@ -16,18 +16,18 @@
       <th>Access Rights</th>
       <th>Access Rights Update</th>
     </tr>
-    <tr v-for="item in acc_list">
+    <tr v-for="(item, index) in acc_list" :key="item.prefix">
       <td>{[item.prefix]}</td>
       <td>
           {[item.access_type]}
       </td>
       <td>
-          <div>
-            <el-radio v-model="item.access_type" label="Controller Only">Controller-Only</el-radio>
-            <el-radio v-model="item.access_type" label="Under-Same-Prefix">Under-Same-Prefix</el-radio>
-            <el-radio v-model="item.access_type" label="No-Control">No-Control</el-radio>
-              <el-button size="mini" round>Update Access Rights</el-button>
-          </div>
+        <div>
+        <el-radio v-model="form[index].access_type" label="Controller Only"></el-radio>
+        <el-radio v-model="form[index].access_type" label="Under-Same-Prefix"></el-radio>
+        <el-radio v-model="form[index].access_type" label="No-Control"></el-radio>
+        </div>
+        <el-button size="mini"  @click="onSubmit(index)" round>update</el-button>
       </td>
     </tr>
   </table>
@@ -41,6 +41,7 @@
 
 <script src="../static/scripts/vue.js"></script>
 <script src="../static/scripts/element-ui.js"></script>
+<script src="../static/scripts/axios.min.js"></script>
 
 <script>
   new Vue({
@@ -48,9 +49,19 @@
       delimiters: ['{[', ']}'],
       data: function(){
         return {
-          acc_list: {{service_prefix_list | tojson}}
-        }
-      }
-    })
+          acc_list: {{service_prefix_list | tojson}},
+          form: {{service_prefix_list | tojson}}
+        };
+       },
+       methods: {
+          onSubmit(index){
+            console.log(this.form[index].prefix);
+            console.log(this.form[index].access_type);
+            axios.post('/exec/update-access-rights',{prefix:this.form[index].prefix,access_type:this.form[index].access_type})
+                .then(response=>{});
+          }
+       }
+    });
+
 
 </script>
