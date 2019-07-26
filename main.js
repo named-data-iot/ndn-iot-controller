@@ -15,7 +15,7 @@ app.on('ready', function() {
   env.LANG = 'en_US.UTF-8';
   var subpy = require('child_process').spawn('./venv/bin/python', ['./app.py'], {env: env});
   var rq = require('request-promise');
-  var mainAddr = 'http://localhost:5000';
+  var mainAddr = 'http://localhost:5001';
 
   var openWindow = function(){
     mainWindow = new BrowserWindow({width: 800, height: 600});
