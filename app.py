@@ -38,13 +38,13 @@ def app_main():
 
     @app.route('/system-overview')
     def system_overview():
-        metainfo = {}
-        metainfo["system_prefix"] = controller.system_prefix
-        metainfo["system_anchor"] = controller.system_anchor.name.toUri()
+        metainfo = []
+        metainfo.append({"information":"System Prefix","value":controller.system_prefix})
+        metainfo.append({"information":"System Anchor","value":controller.system_anchor.name.toUri()})
         if controller.device_list.IsInitialized() is True:
-            metainfo["available_devices"] = str(len(controller.device_list.device))
+            metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
         if controller.service_list.IsInitialized() is True:
-            metainfo["available_services"] = str(len(controller.service_list.service))
+            metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
         return render_template('system-overview.html', metainfo = metainfo)
 
     ### bootstrapping

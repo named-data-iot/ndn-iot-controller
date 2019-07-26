@@ -3,30 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <title>Service Invocation</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="../static/css/element-ui.css">
 </head>
 <body>
-<h1>Service Invocation</h1>
-<form action="../exec/ndn-ping" method="post">
-  <p>
-    <label for="service_id">Service ID</label>
-    <input type="text" name="service_id" id="service_id" required/>
-  </p>
-  <p>
-    <label for="type_of_invocation">CanBePrefix</label>
-    <input type="radio" name="can_be_prefix" id="can_be_prefix" value="any" checked> Any
-    <input type="radio" name="can_be_prefix" id="can_be_prefix" value="all"> All
-    <input type="radio" name="can_be_prefix" id="can_be_prefix" value="designated"> Designated
-  </p>
-  <p>
-      <label for="name">If designated, please type in device name; otherwise, type in the prefix that you want to trigger the service.</label>
-      <br>
-      <input type="text" name="granularity" id="granularity" required/>
-  </p>
-  <p>
-    <button type="submit">Express Interest to Invoke Service</button>
-  </p>
-</form>
+<h2>Service Invocation</h2>
+
+<div id="invoke_service">
+  <el-form label-position="left" label-width="120px" :model="form">
+
+  <el-form-item label="Service ID">
+    <el-input v-model="form.service_id" style="width:75%"></el-input>
+  </el-form-item>
+  <el-form-item label="Can be prefix">
+
+    <el-radio-group v-model="form.can_be_prefix">
+      <el-radio label="Any"></el-radio>
+      <el-radio label="All"></el-radio>
+      <el-radio label="Designated"></el-radio>
+    </el-radio-group>
+  </el-form-item>
+
+    <el-form-item v-if="form.can_be_prefix == 'Designated'" label="Specific name">
+      <el-input v-model="form.granularity" style="width:75%"></el-input>
+    </el-form-item>
+
+     <el-form-item v-else label="Service prefix">
+      <el-input v-model="form.granularity" style="width:75%"></el-input>
+    </el-form-item>
+
+  <el-form-item>
+    <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">express interest to invoke service</el-button>
+  </el-form-item>
+
+  </el-form>
+</div>
 
 {% if response_time %}
   <h2>Response</h2>
@@ -51,3 +61,29 @@
 {% endif %}
 </body>
 </html>
+
+<script src="../static/scripts/vue.js"></script>
+<script src="../static/scripts/element-ui.js"></script>
+<script src="../static/scripts/axios.min.js"></script>
+<script>
+  new Vue({
+    el:'#invoke_service',
+    data(){
+      return{
+        form:{
+          service_id:'',
+          can_be_prefix:'Any',
+          granularity:'',
+        }
+      }
+     },
+    methods:{
+      onSubmit(){
+          console.log(this.form);
+          axios.post('/exec/ndn-ping',{service_id: this.form.service_id,
+                                       can_be_prefix: this.form.can_be_prefix,
+                                       granularity: this.form.granularity}).then(res=>{});
+      }
+    }
+  })
+</script>

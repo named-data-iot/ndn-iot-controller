@@ -3,39 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <title>NDN Ping</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="../static/css/element-ui.css">
+
 </head>
 <body>
-<h1>NDN Ping</h1>
-<form action="../exec/ndn-ping" method="post">
-  <p>
-    <label for="name">Name</label>
-    <input type="text" name="name" id="name" required/>
-  </p>
-  <p>
-    <label for="can_be_prefix">CanBePrefix</label>
-    <input type="radio" name="can_be_prefix" id="can_be_prefix" value="true" checked> True
-    <input type="radio" name="can_be_prefix" id="can_be_prefix" value="false"> False
-  </p>
-  <p>
-    <label for="must_be_fresh">MustBeFresh</label>
-    <input type="radio" name="must_be_fresh" id="must_be_fresh" value="true"> True
-    <input type="radio" name="must_be_fresh" id="must_be_fresh" value="false" checked> False
-  </p>
-  <p>
-    <label for="interest_lifetime">InterestLifetime (sec)</label>
-    <input type="number" name="interest_lifetime" id="interest_lifetime" min="0" max="120" step="1" value="4"/>
-  </p>
-  <p>
-    <button type="submit">Express Interest</button>
-  </p>
-</form>
+<h2>NDN Ping</h2>
 
-{% if response_type %}
-  <p>Response Type: {{ response_type|e }}</p>
-{% endif %}
+<div id="ndn_form" >
+<el-form label-position="left" label-width="120px" :model="form">
+  <el-form-item label="NDN Name">
+    <el-input v-model="form.name" style="width:75%"></el-input>
+  </el-form-item>
+  <el-form-item label="Can be prefix">
+    <el-switch v-model="form.can_be_prefix"></el-switch>
+  </el-form-item>
+   <el-form-item label="Must be fresh">
+    <el-switch v-model="form.must_be_fresh"></el-switch>
+  </el-form-item>
+  <el-form-item label="Interest life time">
+     <el-input v-model="form.interest_lifetime" label="Interest lifetime" style="width:20%"></el-input>
+  </el-form-item>
+  <el-form-item>
+    <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">Express Interest</el-button>
+  </el-form-item>
+  </el-form>
+</div>
+
+
+{% if response_time %}
+  <h2>Response</h2>
   <p>Response Time: {{ response_time|e }}</p>
-{% if name %}
+  <p>Response Type: {{ response_type|e }}</p>
   <p>Name: {{ name|e }}</p>
 {% endif %}
 {% if content_type %}
@@ -55,3 +53,31 @@
 {% endif %}
 </body>
 </html>
+
+<script src="../static/scripts/vue.js"></script>
+<script src="../static/scripts/element-ui.js"></script>
+<script src="../static/scripts/axios.min.js"></script>
+<script>
+  new Vue({
+    el:'#ndn_form',
+    data(){
+      return{
+        form:{
+          name:'',
+          can_be_prefix:true,
+          must_be_fresh:false,
+          interest_lifetime:4
+        }
+      }
+     },
+    methods:{
+      onSubmit(){
+          console.log(this.form);
+          axios.post('/exec/ndn-ping',{name: this.form.name,
+                                       can_be_prefix: this.form.can_be_prefix,
+                                       must_be_fresh: this.form.must_be_fresh,
+                                       interest_lifetime: this.form.interest_lifetime}).then(response=>{});
+      }
+    }
+  })
+</script>
