@@ -8,9 +8,9 @@
 <body>
   <h2>Control Access Rights</h2>
   <div id="access_table">
-    <el-table :data="acc_list" border stripe>
+    <el-table :data="acc_list" border stripe empty-text="no access control available">
       <el-table-column prop="prefix" label="Service Invocation Prefix" min-width="3"></el-table-column>
-      <el-table-column prop="access_type" label="Access Rights" min-width="2"></el-table-column>
+      <el-table-column prop="accessType" label="Access Rights" min-width="2"></el-table-column>
       <el-table-column label="Update" min-width="3">
         <template slot-scope="scope">
           <div>
@@ -48,7 +48,9 @@
           onSubmit(index){
             console.log(this.form[index].prefix);
             console.log(this.form[index].access_type);
-            axios.post('/exec/update-access-rights',{prefix:this.form[index].prefix,access_type:this.form[index].access_type})
+            axios.post('/exec/update-access-rights',{prefix:this.form[index].prefix,access_type:this.form[index].access_type},{
+                        headers: {'Content-Type': 'application/json'}
+                        })
                 .then(response=>{});
           }
        },

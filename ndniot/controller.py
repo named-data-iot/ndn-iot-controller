@@ -9,9 +9,9 @@ import pyndn.transport
 from pyndn.transport.unix_transport import UnixTransport
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
-from .asyncndn import fetch_data_packet, decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
+from .asyncndn import fetch_data_packet, on_sign_on_interest,on_certificate_request_interest,decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
 from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, FaceQueryFilterMessage, FaceStatusMessage
-from .db_storage_pb2 import DeviceList, ServiceList, AccessList
+from .db_storage_pb2 import DeviceList, ServiceList, AccessList,SharedSecrets
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -31,15 +31,18 @@ class Controller:
         self.device_list = DeviceList()
         self.service_list = ServiceList()
         self.access_list = AccessList()
+        self.shared_secret_list = SharedSecrets()
+
 
         self.face_id_list = []
 
-    def __del__(self):
+    def save_db(self):
         if self.db:
             wb = self.db.write_batch()
             wb.put(b'device_list', self.device_list.SerializeToString())
             wb.put(b'service_list', self.service_list.SerializeToString())
             wb.put(b'access_list', self.access_list.SerializeToString())
+            wb.put(b'shared_secret_list',self.shared_secret_list.SerializeToString())
             wb.write()
             self.db.close()
 
@@ -76,7 +79,11 @@ class Controller:
         # 3. ACCESS CONTROL: get all the encryption/decryption key pairs
         ret = self.db.get(b'access_list')
         if ret:
-            self.access_list.ParseFromString(self.db.get(b'access_list'))
+            self.access_list.ParseFromString(ret)
+        # 4. SHARED SECRETS: get all shared secrets
+        ret = self.db.get(b'shared_secret_list')
+        if ret:
+            self.shared_secret_list.ParseFromString(ret)
         logging.info("Server finishes the step 2 initialization")
 
     async def iot_connectivity_init(self):
@@ -117,8 +124,15 @@ class Controller:
             result["response_type"] = 'Timeout'
         return result
 
-    def bootstrapping(self, parameter_list):
-        pass
+    async def bootstrapping(self):
+        ### [SIGN ON - response]: return trust anchor and N2
+        ret = await on_sign_on_interest(self.face,Name('/ndn/sign-on'))
+
+        ### [CERTIFICATE REQUEST - response]: return certificate
+        ret = await on_certificate_request_interest(self.face,Name(controller.system_prefix + '/cert'))
+
+        result = {}
+        return result
 
     def get_access_status(self, parameter_list):
         pass

@@ -43,3 +43,9 @@ Python server:
 ```bash
 ./venv/bin/python app.py
 ```
+
+LevelDB, QRCode
+```bash
+brew install zbar
+brew install leveldb
+```

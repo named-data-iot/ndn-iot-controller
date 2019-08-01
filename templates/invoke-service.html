@@ -82,7 +82,9 @@
           console.log(this.form);
           axios.post('/exec/ndn-ping',{service_id: this.form.service_id,
                                        can_be_prefix: this.form.can_be_prefix,
-                                       granularity: this.form.granularity}).then(res=>{});
+                                       granularity: this.form.granularity},{
+                        headers: {'Content-Type': 'application/json'}
+                        }).then(res=>{});
       }
     }
   })

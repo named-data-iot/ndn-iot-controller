@@ -8,16 +8,32 @@
 </body>
     <h2>BootStrap</h2>
     <div id="SharedScretInput">
-        <el-input placeholder="Please enter the shared secrets" v-model="ssinput">
-        <template slot="prepend">Shared Secret from the Device</template>
-        </el-input>
-        <div style="margin-top:20px">
-        <el-button type="primary" size="mini" round plain @click="onSubmit()">Bootstrap</el-button>
+        <div>
+            <h3>Upload shared secrets</h3>
+            <el-upload action="/add/shared_secrets" list-type="picture-card" :on-success="addSS" :before-upload="beforeUpload">
+                <i class="el-icon-plus"></i>
+                <div class="el-upload__tip" slot="tip">allowed image format: jpg, png</div>
+            </el-upload>
+        </div>
+        <div>
+            <h3>Start bootstrapping</h3>
+            <el-button type="primary" size="mini" round plain @click="startBootstrap()">Bootstrap</el-button>
+        </div>
+
+        <div>
+            <h3>Stored shared secrets</h3>
+            <el-table :data="existing_shared_secrets" stripe border empty-text="no stored shared secrets">
+                <el-table-column prop="deviceIdentifier" label="Device Identifier"></el-table-column>
+                <el-table-column prop="publicKey" label="Public Key"></el-table-column>
+                <el-table-column prop="symmetricKey" label="Symmetric Key"></el-table-column>
+                <el-table-column label="Operation">
+                    <template slot-scope="scope">
+                        <el-button @click ="deleteSS(scope.$index)" type="text" size="small">remove</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
         </div>
     </div>
-  {% if st_code %}
-    <p>{{ st_code }} {{ st_text }}</p>
-  {% endif %}
 </body>
 </html>
 
@@ -29,13 +45,64 @@
     el:'#SharedScretInput',
     data(){
       return{
-        ssinput:'',
+        existing_shared_secrets:{{ existing_shared_secrets | tojson}},
       }
      },
      methods:{
-        onSubmit(){
-          console.log(this.ssinput);
-          axios.post('/exec/bootstrapping',{shared_secrets:this.ssinput}).then(response=>{});
+        startBootstrap(){
+          axios.post('/exec/bootstrapping',{},{
+                        headers: {'Content-Type': 'application/json'}
+                        }).then(response=>{
+                            console.log(response);
+                            console.log(response.data);})
+        },
+        beforeUpload(file){
+            console.log(file);
+            if(file.name.endsWith('.png') || file.name.endsWith('.jpg') ){
+                return true;
+            }else{
+                this.$notify.error({
+                title: 'ERROR',
+                message: 'The file format is not allowed'
+                });
+                return false;
+            }
+        },
+        deleteSS(index){
+            let vm = this;
+            axios.post('/delete/shared_secrets',this.existing_shared_secrets[index],{
+                        headers: {'Content-Type': 'application/json'}
+                        }).then(response=>{
+                            console.log(response)
+                            if(response.data.st_code === 200){
+                                this.$notify.success({
+                                title: 'SUCCESS',
+                                message: 'The shared secret is deleted'
+                                });
+                                vm.existing_shared_secrets.splice(index,1)
+                            }else{
+                                this.$notify.error({
+                                title: 'ERROR',
+                                message: 'The shared secret is not deleted'
+                                });
+                            }
+                        });
+        },
+        addSS(response, file, fileList){
+            console.log(response)
+            if(response.st_code === 200){
+                this.$notify.success({
+                title: 'SUCCESS',
+                message: 'upload image is decrypted'
+                });
+                this.existing_shared_secrets = response.sharedsecrets;
+            }else{
+                this.$notify.error({
+                title: 'ERROR',
+                message: 'Something wrong with the uploaded image'
+                });
+            }
+
         }
      }
   })

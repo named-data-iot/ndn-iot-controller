@@ -5,9 +5,13 @@ import os
 import logging
 from datetime import datetime
 from ndniot.controller import Controller
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, url_for, jsonify
 from flask_socketio import SocketIO
 from pyndn import Interest, Data, NetworkNack
+from google.protobuf import json_format
+from PIL import Image
+from pyzbar.pyzbar import decode
+import json
 
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
@@ -50,65 +54,88 @@ def app_main():
     ### bootstrapping
     @app.route('/bootstrapping')
     def bootstrapping():
-        return render_template('bootstrapping.html')
+        load = json.loads(json_format.MessageToJson(controller.shared_secret_list))
+        if not load:
+            existing_shared_secrets = []
+        else:
+            existing_shared_secrets = load["sharedsecrets"]
+        logging.info("bootstapping")
+        logging.info(existing_shared_secrets)
+        return render_template('bootstrapping.html',existing_shared_secrets = existing_shared_secrets)
 
     ### trigger bootstrapping process
     @app.route('/exec/bootstrapping', methods=['POST'])
     def bootstrap_device():
-        shared_secret = request.form['secret']
-        ret = None # run_until_complete(server.bootstrap_device(shared_secret))
+        r_json = request.get_json()
+        #shared_secret = r_json['secret']
+        ret = run_until_complete(controller.bootstrapping())
         if ret is None:
             logging.info("No response: device bootstrapping")
         else:
             logging.info("Bootstrap device")
         return redirect(url_for('device_list'))
 
+    ###add shared_secrets
+    @app.route('/add/shared_secrets',methods=['POST'])
+    def add_shared_secrets():
+        up_img = request.files['file']
+        shared_info = json.loads(decode(Image.open(up_img))[0].data)
+        new_shared_secret = controller.shared_secret_list.sharedsecrets.add()
+        try:
+            new_shared_secret.device_identifier = shared_info["device_identifier"]
+            new_shared_secret.public_key = shared_info["public_key"]
+            new_shared_secret.symmetric_key = shared_info["symmetric_key"]
+            res = json.loads(json_format.MessageToJson(controller.shared_secret_list))
+            res["st_code"] = 200
+            return res
+        except:
+            return jsonify({"st_code":500})
+
+    ###delete shared_secrets
+    @app.route('/delete/shared_secrets',methods=['POST'])
+    def delete_shared_secrets():
+        r_json = request.get_json()
+        try:
+            count = 0
+            for ss in controller.shared_secret_list.sharedsecrets:
+                if ss.device_identifier == r_json["deviceIdentifier"] and \
+                        ss.public_key == r_json["publicKey"] and \
+                        ss.symmetric_key == r_json["symmetricKey"]:
+                    del controller.shared_secret_list.sharedsecrets[count]
+                count += 1
+                return jsonify({"st_code": 200})
+        except:
+          return jsonify({"st_code": 500})
+
+
     ### device list
     @app.route('/device-list')
     def device_list():
-        #device_list= controller.get_devices()
+        load = json.loads(json_format.MessageToJson(controller.device_list))
+        if not load:
+            device_list = []
+        else:
+            device_list = load["device"]
         # The following code is only for sample use
-        device_list=[
-            {
-                "device_name": "/myhome/bedroom/light-0-1",
-                "device_info": "Philips LED light"
-            },
-            {
-                "device_name": "/myhome/livingroom/printer-A",
-                "device_info": "HP Printer X580"
-            }
-        ]
-        # Sample code end. Delete the code when in real development
         return render_template('device-list.html', device_list=device_list)
 
     @app.route('/exec/remove_device')
     def remove_device():
-        device_name=request.form["device_name"]
+        r_json = request.get_json()
+        device_name = r_json["device_name"]
         ret = "" # run_until_complete(server.invoke_cert(device_name))
         return render_template('face-list.html', device_list=device_list)
 
     ### service list
     @app.route('/service-list')
     def service_list():
-        # service_list = controller.get_services()
+        load = json.loads(json_format.MessageToJson(controller.service_list))
+        if not load:
+            service_list = []
+        else:
+            service_list = load["service"]
         # The following code is only for sample use
-        service_list=[
-            {
-                "service_id": "printer",
-                "service_info": "Printer Control",
-                "available_commands": "start, print, restart, halt"
-            },
-            {
-                "service_id": "LED",
-                "service_info": "LED Light Control",
-                "available_commands": "on, off"
-            }
-        ]
-        # Sample code end. Delete the code when in real development
-        fields = list(['service_id','service_info','available_commands'])
-        fields_collapse = [field for field in set(fields) - {'service_id'}]
-        return render_template('service-list.html', service_list=service_list,
-                               fields_collapse=fields_collapse)
+        return render_template('service-list.html', service_list=service_list)
 
     ### service invocation
     @app.route('/invoke-service')
@@ -122,41 +149,19 @@ def app_main():
     ### access control
     @app.route('/access-control')
     def access_control():
-        # service_prefix_list = controller.access_list
+        load = json.loads(json_format.MessageToJson(controller.access_list))
+        if not load:
+            service_prefix_list = []
+        else:
+            service_prefix_list = load["access"]
         # The following code is only for sample use
-        service_prefix_list=[
-            {
-                "prefix": "/myhome/(ALL/)SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/livingroom/(ALL/)SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/livingroom/printer-A/SD/printer",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/(ALL/)SD/LED",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/bedroom(ALL/)/SD/LED",
-                "access_type": "Controller Only",
-            },
-            {
-                "prefix": "/myhome/bedroom/light-0-1/SD/LED",
-                "access_type": "Controller Only",
-            }
-        ]
-        # Sample code end. Delete the code when in real development
         return render_template('access-control.html', service_prefix_list=service_prefix_list)
 
     @app.route('/exec/update-access-rights', methods=['POST'])
     def update_access_rights():
-        print(request.form['prefix'])
-        print(request.form['access_type'])
+        r_json = request.get_json()
+        print(r_json['prefix'])
+        print(r_json['access_type'])
         return redirect(url_for('/access-control'))
 
     @app.route('/ndn-ping')
@@ -165,11 +170,12 @@ def app_main():
 
     @app.route('/exec/ndn-ping', methods=['POST'])
     def exec_ndn_ping():
-        name = request.form['name']
-        can_be_prefix = request.form['can_be_prefix'] == 'true'
-        must_be_fresh = request.form['must_be_fresh'] == 'true'
+        r_json = request.get_json()
+        name = r_json['name']
+        can_be_prefix = r_json['can_be_prefix'] == 'true'
+        must_be_fresh = r_json['must_be_fresh'] == 'true'
         try:
-            interest_lifetime = float(request.form['interest_lifetime']) * 1000.0
+            interest_lifetime = float(r_json['interest_lifetime']) * 1000.0
         except ValueError:
             interest_lifetime = 4000.0
 
@@ -200,8 +206,10 @@ def app_main():
     # def stop_nfd():
     #     subprocess.run('nfd-stop')
     #     return redirect('/nfd-management')
-
-    socketio.run(app, port=5001)
+    try:
+        socketio.run(app, port=5001)
+    finally:
+        controller.save_db()
 
 if __name__ == '__main__':
     app_main()

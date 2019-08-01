@@ -7,6 +7,7 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
 from google.protobuf import symbol_database as _symbol_database
+from google.protobuf import descriptor_pb2
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
@@ -18,8 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='db-storage.proto',
   package='',
   syntax='proto3',
-  serialized_options=None,
-  serialized_pb=_b('\n\x10\x64\x62-storage.proto\"N\n\nDeviceItem\x12\x11\n\tdevice_id\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65vice_info\x18\x02 \x01(\t\x12\x18\n\x10\x64\x65vice_cert_name\x18\x03 \x01(\t\")\n\nDeviceList\x12\x1b\n\x06\x64\x65vice\x18\x01 \x03(\x0b\x32\x0b.DeviceItem\"S\n\x0bServiceItem\x12\x12\n\nservice_id\x18\x01 \x01(\t\x12\x14\n\x0cservice_info\x18\x02 \x01(\t\x12\x1a\n\x12\x61vailable_commands\x18\x03 \x03(\t\",\n\x0bServiceList\x12\x1d\n\x07service\x18\x01 \x03(\x0b\x32\x0c.ServiceItem\"\xc1\x01\n\nAccessItem\x12\x0e\n\x06prefix\x18\x01 \x01(\t\x12%\n\x04type\x18\x02 \x01(\x0e\x32\x17.AccessItem.Access_Type\x12\x16\n\x0e\x65ncryption_key\x18\x03 \x01(\t\x12\x16\n\x0e\x64\x65\x63ryption_key\x18\x04 \x01(\t\"L\n\x0b\x41\x63\x63\x65ss_Type\x12\x11\n\rNO_LIMITATION\x10\x00\x12\x13\n\x0f\x43ONTROLLER_ONLY\x10\x01\x12\x15\n\x11UNDER_SAME_PREFIX\x10\x02\")\n\nAccessList\x12\x1b\n\x06\x61\x63\x63\x65ss\x18\x01 \x03(\x0b\x32\x0b.AccessItemb\x06proto3')
+  serialized_pb=_b('\n\x10\x64\x62-storage.proto\"N\n\nDeviceItem\x12\x11\n\tdevice_id\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65vice_info\x18\x02 \x01(\t\x12\x18\n\x10\x64\x65vice_cert_name\x18\x03 \x01(\t\")\n\nDeviceList\x12\x1b\n\x06\x64\x65vice\x18\x01 \x03(\x0b\x32\x0b.DeviceItem\"S\n\x0bServiceItem\x12\x12\n\nservice_id\x18\x01 \x01(\t\x12\x14\n\x0cservice_info\x18\x02 \x01(\t\x12\x1a\n\x12\x61vailable_commands\x18\x03 \x03(\t\",\n\x0bServiceList\x12\x1d\n\x07service\x18\x01 \x03(\x0b\x32\x0c.ServiceItem\"\xc1\x01\n\nAccessItem\x12\x0e\n\x06prefix\x18\x01 \x01(\t\x12%\n\x04type\x18\x02 \x01(\x0e\x32\x17.AccessItem.Access_Type\x12\x16\n\x0e\x65ncryption_key\x18\x03 \x01(\t\x12\x16\n\x0e\x64\x65\x63ryption_key\x18\x04 \x01(\t\"L\n\x0b\x41\x63\x63\x65ss_Type\x12\x11\n\rNO_LIMITATION\x10\x00\x12\x13\n\x0f\x43ONTROLLER_ONLY\x10\x01\x12\x15\n\x11UNDER_SAME_PREFIX\x10\x02\")\n\nAccessList\x12\x1b\n\x06\x61\x63\x63\x65ss\x18\x01 \x03(\x0b\x32\x0b.AccessItem\"Y\n\x11SharedSecretsItem\x12\x19\n\x11\x64\x65vice_identifier\x18\x01 \x01(\t\x12\x12\n\npublic_key\x18\x02 \x01(\t\x12\x15\n\rsymmetric_key\x18\x03 \x01(\t\":\n\rSharedSecrets\x12)\n\rsharedsecrets\x18\x01 \x03(\x0b\x32\x12.SharedSecretsItemb\x06proto3')
 )
 
 
@@ -32,19 +32,19 @@ _ACCESSITEM_ACCESS_TYPE = _descriptor.EnumDescriptor(
   values=[
     _descriptor.EnumValueDescriptor(
       name='NO_LIMITATION', index=0, number=0,
-      serialized_options=None,
+      options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
       name='CONTROLLER_ONLY', index=1, number=1,
-      serialized_options=None,
+      options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
       name='UNDER_SAME_PREFIX', index=2, number=2,
-      serialized_options=None,
+      options=None,
       type=None),
   ],
   containing_type=None,
-  serialized_options=None,
+  options=None,
   serialized_start=392,
   serialized_end=468,
 )
@@ -64,28 +64,28 @@ _DEVICEITEM = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='device_info', full_name='DeviceItem.device_info', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='device_cert_name', full_name='DeviceItem.device_cert_name', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -109,14 +109,14 @@ _DEVICELIST = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -140,28 +140,28 @@ _SERVICEITEM = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='service_info', full_name='ServiceItem.service_info', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='available_commands', full_name='ServiceItem.available_commands', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -185,14 +185,14 @@ _SERVICELIST = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -216,28 +216,28 @@ _ACCESSITEM = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='type', full_name='AccessItem.type', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='encryption_key', full_name='AccessItem.encryption_key', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='decryption_key', full_name='AccessItem.decryption_key', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -245,7 +245,7 @@ _ACCESSITEM = _descriptor.Descriptor(
   enum_types=[
     _ACCESSITEM_ACCESS_TYPE,
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -269,14 +269,14 @@ _ACCESSLIST = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -286,17 +286,96 @@ _ACCESSLIST = _descriptor.Descriptor(
   serialized_end=511,
 )
 
+
+_SHAREDSECRETSITEM = _descriptor.Descriptor(
+  name='SharedSecretsItem',
+  full_name='SharedSecretsItem',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='device_identifier', full_name='SharedSecretsItem.device_identifier', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='public_key', full_name='SharedSecretsItem.public_key', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='symmetric_key', full_name='SharedSecretsItem.symmetric_key', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=513,
+  serialized_end=602,
+)
+
+
+_SHAREDSECRETS = _descriptor.Descriptor(
+  name='SharedSecrets',
+  full_name='SharedSecrets',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='sharedsecrets', full_name='SharedSecrets.sharedsecrets', index=0,
+      number=1, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=604,
+  serialized_end=662,
+)
+
 _DEVICELIST.fields_by_name['device'].message_type = _DEVICEITEM
 _SERVICELIST.fields_by_name['service'].message_type = _SERVICEITEM
 _ACCESSITEM.fields_by_name['type'].enum_type = _ACCESSITEM_ACCESS_TYPE
 _ACCESSITEM_ACCESS_TYPE.containing_type = _ACCESSITEM
 _ACCESSLIST.fields_by_name['access'].message_type = _ACCESSITEM
+_SHAREDSECRETS.fields_by_name['sharedsecrets'].message_type = _SHAREDSECRETSITEM
 DESCRIPTOR.message_types_by_name['DeviceItem'] = _DEVICEITEM
 DESCRIPTOR.message_types_by_name['DeviceList'] = _DEVICELIST
 DESCRIPTOR.message_types_by_name['ServiceItem'] = _SERVICEITEM
 DESCRIPTOR.message_types_by_name['ServiceList'] = _SERVICELIST
 DESCRIPTOR.message_types_by_name['AccessItem'] = _ACCESSITEM
 DESCRIPTOR.message_types_by_name['AccessList'] = _ACCESSLIST
+DESCRIPTOR.message_types_by_name['SharedSecretsItem'] = _SHAREDSECRETSITEM
+DESCRIPTOR.message_types_by_name['SharedSecrets'] = _SHAREDSECRETS
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 DeviceItem = _reflection.GeneratedProtocolMessageType('DeviceItem', (_message.Message,), dict(
@@ -340,6 +419,20 @@ AccessList = _reflection.GeneratedProtocolMessageType('AccessList', (_message.Me
   # @@protoc_insertion_point(class_scope:AccessList)
   ))
 _sym_db.RegisterMessage(AccessList)
+
+SharedSecretsItem = _reflection.GeneratedProtocolMessageType('SharedSecretsItem', (_message.Message,), dict(
+  DESCRIPTOR = _SHAREDSECRETSITEM,
+  __module__ = 'db_storage_pb2'
+  # @@protoc_insertion_point(class_scope:SharedSecretsItem)
+  ))
+_sym_db.RegisterMessage(SharedSecretsItem)
+
+SharedSecrets = _reflection.GeneratedProtocolMessageType('SharedSecrets', (_message.Message,), dict(
+  DESCRIPTOR = _SHAREDSECRETS,
+  __module__ = 'db_storage_pb2'
+  # @@protoc_insertion_point(class_scope:SharedSecrets)
+  ))
+_sym_db.RegisterMessage(SharedSecrets)
 
 
 # @@protoc_insertion_point(module_scope)

@@ -36,3 +36,13 @@ message AccessItem {
 message AccessList {
     repeated AccessItem access = 1;
 }
+
+message SharedSecretsItem{
+    string device_identifier = 1;
+    string public_key = 2;
+    string symmetric_key = 3;
+}
+
+message SharedSecrets{
+    repeated SharedSecretsItem sharedsecrets = 1;
+}

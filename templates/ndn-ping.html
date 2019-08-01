@@ -73,10 +73,14 @@
     methods:{
       onSubmit(){
           console.log(this.form);
-          axios.post('/exec/ndn-ping',{name: this.form.name,
-                                       can_be_prefix: this.form.can_be_prefix,
-                                       must_be_fresh: this.form.must_be_fresh,
-                                       interest_lifetime: this.form.interest_lifetime}).then(response=>{});
+          axios.post('/exec/ndn-ping',
+                      {name: this.form.name,
+                       can_be_prefix: this.form.can_be_prefix,
+                       must_be_fresh: this.form.must_be_fresh,
+                       interest_lifetime: this.form.interest_lifetime},
+                       {
+                        headers: {'Content-Type': 'application/json'}
+                       }).then(response=>{});
       }
     }
   })

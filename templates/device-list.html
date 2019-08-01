@@ -8,9 +8,10 @@
 <body>
   <h2>Device List</h2>
   <div id="devicelist">
-    <el-table :data="device_list" border stripe>
-      <el-table-column prop="device_name" label="Device Name" min-width="2"></el-table-column>
-      <el-table-column prop="device_info" label="Device Info" min-width="2"></el-table-column>
+    <el-table :data="device_list" border stripe empty-text="no device available">
+      <el-table-column prop="deviceId" label="Device ID" min-width="2"></el-table-column>
+      <el-table-column prop="deviceInfo" label="Device Info" min-width="2"></el-table-column>
+      <el-table-column prop="deviceCertName" label="Device Cert Name" min-width="2"></el-table-column>
       <el-table-column label="Operation" min-width="1">
         <template slot-scope="scope">
         <el-button @click="deleteRow(scope.$index)" type="danger" size="small">remove</el-button>
@@ -39,7 +40,9 @@
      methods:{
         deleteRow(index){
           console.log(this.device_list[index]);
-          axios.post('/exec/remove-device',{device_name:this.device_list[index].device_name}).then(response=>{});
+          axios.post('/exec/remove-device',{device_name:this.device_list[index].device_name},{
+                        headers: {'Content-Type': 'application/json'}
+                        }).then(response=>{});
         }
      }
   })

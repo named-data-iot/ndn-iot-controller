@@ -2,6 +2,7 @@ import asyncio
 import threading
 from typing import Union, Dict, List
 from pyndn import Face, Interest, NetworkNack, Data, Name
+import logging
 from pyndn.meta_info import ContentType
 
 
@@ -11,11 +12,13 @@ async def fetch_data_packet(face: Face, interest: Interest) -> Union[Data, Netwo
 
     def on_data(_interest, data: Data):
         nonlocal done, result
+        logging.info("RECEIVING DATA")
         result = data
         done.set()
 
     def on_timeout(_interest):
         nonlocal done
+        logging.info("TIME OUT")
         done.set()
 
     def on_network_nack(_interest, network_nack: NetworkNack):
@@ -30,7 +33,69 @@ async def fetch_data_packet(face: Face, interest: Interest) -> Union[Data, Netwo
             await asyncio.sleep(0.01)
 
     try:
+        logging.info("EXPRESSING INTEREST")
+        logging.info(interest.name)
         face.expressInterest(interest, on_data, on_timeout, on_network_nack)
+        await wait_for_event()
+        return result
+    except (ConnectionRefusedError, BrokenPipeError) as error:
+        return error
+
+
+async def on_sign_on_interest(face:Face,prefix:Name):
+    done = threading.Event()
+    result = None
+
+    def onInterest(prefix, interest, face, interestFilterId, filter):
+        logging.info(prefix)
+        logging.info("[SIGN ON]: interest received")
+        nonlocal done,result
+        result = interest
+        done.set()
+
+
+    def  onRegisterFailed(prefix:Name):
+        logging.error("register failed")
+
+    async def wait_for_event():
+        ret = False
+        while not ret:
+            ret = done.wait(0.01)
+            await asyncio.sleep(0.01)
+    try:
+        logging.info("REGISTER [SIGN ON] PREFIX INTEREST")
+        logging.info(prefix)
+        face.registerPrefix(prefix,onInterest,onRegisterFailed)
+        await wait_for_event()
+        return result
+    except (ConnectionRefusedError, BrokenPipeError) as error:
+        return error
+
+
+async def on_certificate_request_interest(face:Face,prefix:Name):
+    done = threading.Event()
+    result = None
+
+    def onInterest(prefix, interest, face, interestFilterId, filter):
+        logging.info(prefix)
+        logging.info("[CERTIFICATE REQUEST]: interest received")
+        nonlocal done,result
+        result = interest
+        done.set()
+
+
+    def  onRegisterFailed(prefix:Name):
+        logging.error("register failed")
+
+    async def wait_for_event():
+        ret = False
+        while not ret:
+            ret = done.wait(0.01)
+            await asyncio.sleep(0.01)
+    try:
+        logging.info("REGISTER [CERTIFICATE REQUEST] PREFIX INTEREST")
+        logging.info(prefix)
+        face.registerPrefix(prefix,onInterest,onRegisterFailed)
         await wait_for_event()
         return result
     except (ConnectionRefusedError, BrokenPipeError) as error:

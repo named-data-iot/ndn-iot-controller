@@ -8,10 +8,10 @@
 <body>
   <h2>Service List</h2>
   <div id="service_list">
-  <el-table :data="device_list" border stripe>
-      <el-table-column prop="service_id" label="Service ID" min-width="2"></el-table-column>
-      <el-table-column prop="service_info" label="Device Info" min-width="2"></el-table-column>
-      <el-table-column prop="available_commands" label="Available Commands" min-width="3"></el-table-column>
+  <el-table :data="device_list" border stripe empty-text="no service available">
+      <el-table-column prop="serviceId" label="Service ID" min-width="2"></el-table-column>
+      <el-table-column prop="serviceInfo" label="Device Info" min-width="2"></el-table-column>
+      <el-table-column prop="availableCommands" label="Available Commands" min-width="3"></el-table-column>
     </el-table>
   </div>
 
