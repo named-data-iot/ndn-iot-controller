@@ -2,15 +2,19 @@ import asyncio
 import logging
 import threading
 import plyvel
-from pyndn import Face, Interest, Data, Name, NetworkNack
+import struct
+import time
+from pyndn import Face, Interest, Data, Name, NetworkNack, InterestFilter
 from pyndn.security import KeyChain, Pib
 from pyndn.encoding import ProtobufTlv
 import pyndn.transport
 from pyndn.transport.unix_transport import UnixTransport
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
-from .asyncndn import fetch_data_packet, on_sign_on_interest,on_certificate_request_interest,decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
-from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, FaceQueryFilterMessage, FaceStatusMessage
+from .asyncndn import fetch_data_packet, on_sign_on_interest,on_certificate_request_interest,\
+    decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
+from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, \
+    FaceQueryFilterMessage, FaceStatusMessage
 from .db_storage_pb2 import DeviceList, ServiceList, AccessList,SharedSecrets
 
 default_prefix = "/ndn-iot"
@@ -30,6 +34,7 @@ class Controller:
         self.db = None
         self.device_list = DeviceList()
         self.service_list = ServiceList()
+        self.real_service_list = {}
         self.access_list = AccessList()
         self.shared_secret_list = SharedSecrets()
 
@@ -272,6 +277,9 @@ class Controller:
             logging.info("Face creation succeeded")
         except (ConnectionRefusedError, BrokenPipeError, OSError):
             logging.fatal("Face creation failed")
+
+        self.setup_sd()
+
         while self.running and self.face is not None:
             try:
                 self.face.processEvents()
@@ -302,6 +310,54 @@ class Controller:
         done.wait()
         return controller
 
-if __name__ == "__main__":
-    emit = "emit"
-    controller = Controller.start_controller(emit)
+    ###################
+    @staticmethod
+    def get_time_now_ms():
+        return round(time.time() * 1000.0)
+
+    def on_sd_adv_interest(self, _prefix, interest: Interest, _face, _filter_id, interest_filter: InterestFilter):
+        param = interest.applicationParameters.toBytes()
+        # prefix = /<home-prefix>/<SD=1>/<ADV=0>
+        locator = interest.name.getSubName(interest_filter.getPrefix().size())
+        fresh_period = struct.unpack("i", param[:4])[0]
+        service_ids = [sid for sid in param[4:]]
+        logging.debug("ON ADV: %s %s %s", locator, fresh_period, service_ids)
+        cur_time = self.get_time_now_ms()
+        for sid in service_ids:
+            # /<home-prefix>/<SD=1>/<service>/<locator>
+            sname = (Name(self.system_prefix)
+                     .append(Name.Component.fromNumber(1))
+                     .append(Name.Component.fromNumber(sid))
+                     .append(locator))
+            logging.debug("SNAME: %s", sname)
+            self.real_service_list[sname.toUri()] = cur_time + fresh_period
+
+    def on_sd_ctl_interest(self, _prefix, interest: Interest, face: Face, _filter_id, _interest_filter):
+        param = interest.applicationParameters.toBytes()
+        interested_ids = {sid for sid in param}
+        result = b''
+        cur_time = self.get_time_now_ms()
+        for sname, exp_time in self.real_service_list.items():
+            sid = Name(sname)[2].toNumber()
+            if sid in interested_ids and exp_time > cur_time:
+                result += sname.wireEncode().toBytes()
+                result += struct.pack("i", exp_time - cur_time)
+
+        data = Data(interest.name)
+        data.content = result
+        face.putData(data)
+
+    def on_register_failed(self, prefix):
+        logging.fatal("Prefix registration failed: %s", prefix)
+
+    def setup_sd(self):
+        # /<home-prefix>/<SD=1>
+        sd_prefix = Name(self.system_prefix).append(Name.Component.fromNumber(1))
+        self.face.registerPrefix(sd_prefix, None, self.on_register_failed)
+        # /<home-prefix>/<SD=1>/<SD_ADV=0>
+        self.face.setInterestFilter(Name(sd_prefix).append(Name.Component.fromNumber(0)), self.on_sd_adv_interest)
+        # /<home-prefix>/<SD_CTL=2>
+        sd_ctl_prefix = Name(self.system_prefix).append(Name.Component.fromNumber(2))
+        self.face.registerPrefix(sd_ctl_prefix, None, self.on_register_failed)
+        # /<home-prefix>/<SD_CTL=2>/<SD_CTL_META=0>
+        self.face.setInterestFilter(Name(sd_ctl_prefix).append(Name.Component.fromNumber(0)), self.on_sd_ctl_interest)

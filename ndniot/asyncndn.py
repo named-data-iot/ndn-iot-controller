@@ -42,6 +42,9 @@ async def fetch_data_packet(face: Face, interest: Interest) -> Union[Data, Netwo
         return error
 
 
+# TODO: What does the following code do?
+#   onInterest can be called MORE THAN ONCE.
+#   Remember to release the resource.
 async def on_sign_on_interest(face:Face,prefix:Name):
     done = threading.Event()
     result = None
