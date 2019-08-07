@@ -319,7 +319,8 @@ class Controller:
         param = interest.applicationParameters.toBytes()
         # prefix = /<home-prefix>/<SD=1>/<ADV=0>
         locator = interest.name.getSubName(interest_filter.getPrefix().size())
-        fresh_period = struct.unpack("i", param[:4])[0]
+        locator = locator[:-1]  # Remove parameter digest
+        fresh_period = struct.unpack("!I", param[:4])[0]
         service_ids = [sid for sid in param[4:]]
         logging.debug("ON ADV: %s %s %s", locator, fresh_period, service_ids)
         cur_time = self.get_time_now_ms()
@@ -334,18 +335,23 @@ class Controller:
 
     def on_sd_ctl_interest(self, _prefix, interest: Interest, face: Face, _filter_id, _interest_filter):
         param = interest.applicationParameters.toBytes()
+        if param is None:
+            logging.error("Malformed Interest")
+            return
         interested_ids = {sid for sid in param}
         result = b''
         cur_time = self.get_time_now_ms()
         for sname, exp_time in self.real_service_list.items():
             sid = Name(sname)[2].toNumber()
             if sid in interested_ids and exp_time > cur_time:
-                result += sname.wireEncode().toBytes()
+                result += Name(sname).wireEncode().toBytes()
                 result += struct.pack("i", exp_time - cur_time)
 
         data = Data(interest.name)
         data.content = result
+        data.metaInfo.freshnessPeriod = 5000
         face.putData(data)
+        logging.debug("PutData %s", data.name.toUri())
 
     def on_register_failed(self, prefix):
         logging.fatal("Prefix registration failed: %s", prefix)
