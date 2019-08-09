@@ -11,9 +11,9 @@ message DeviceList {
 }
 
 message ServiceItem {
-    string service_id = 1;
-    string service_info = 2;
-    repeated string available_commands = 3;
+    uint32 service_id = 1;
+    string service_name = 2;
+    uint64 exp_time = 3;
 }
 
 message ServiceList {
