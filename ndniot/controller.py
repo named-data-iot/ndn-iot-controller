@@ -7,15 +7,17 @@ import time
 from pyndn import Face, Interest, Data, Name, NetworkNack, InterestFilter
 from pyndn.security import KeyChain, Pib
 from pyndn.encoding import ProtobufTlv
+from pyndn.encoding.tlv.tlv_encoder import TlvEncoder
 import pyndn.transport
 from pyndn.transport.unix_transport import UnixTransport
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
-from .asyncndn import fetch_data_packet, on_sign_on_interest,on_certificate_request_interest,\
+from .asyncndn import fetch_data_packet,\
     decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
 from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, \
     FaceQueryFilterMessage, FaceStatusMessage
 from .db_storage_pb2 import DeviceList, ServiceList, AccessList,SharedSecrets
+from .tlvtree import TLVTree
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -129,15 +131,89 @@ class Controller:
             result["response_type"] = 'Timeout'
         return result
 
+    async def on_sign_on_interest(self,face: Face, _prefix: Name):
+
+        done = threading.Event()
+        result = {'DeviceIdentifier': None, 'DeviceCapability': None, 'N1PublicKey': None}
+        registerID = -1
+
+        TLV_SSP_DEVICE_IDENTIFIER = 142
+        TLV_SSP_DEVICE_CAPABILITIES = 143
+        TLV_SSP_N1_PUB = 144
+        TLV_Data = 6
+        TLV_AC_ECDH_PUB = 130
+        TLV_AC_SALT = 131
+
+
+        def onInterest(prefix, interest: Interest, _face: Face, interestFilterId, filter):
+            logging.info("[SIGN ON]: interest received")
+            logging.info(interest.name)
+            if not interest.hasParameters():
+                raise ValueError("[SIGN ON]: interest has no parameters")
+            tlv_ret = TLVTree(interest.applicationParameters.toBytes()).get_dict()
+            logging.info(interest.applicationParameters.toBytes())
+            logging.info(tlv_ret)
+            d_i = tlv_ret.get(TLV_SSP_DEVICE_IDENTIFIER)
+            d_c = tlv_ret.get(TLV_SSP_DEVICE_CAPABILITIES)
+            n1_pub = tlv_ret.get(TLV_SSP_N1_PUB)
+            if not d_i or not d_c or not n1_pub:
+                raise KeyError("[SIGN ON]: lack interest parameters")
+            nonlocal result
+            result['DeviceIdentifier'] = d_i
+            result['DeviceCapability'] = d_c
+            result['N1PublicKey'] = n1_pub
+
+            tlv_encoder = TlvEncoder()
+            # trust anchor
+            nonlocal self
+            tlv_encoder.writeBlobTlv(TLV_Data,bytes(self.system_anchor.__str__(),'utf-8'))
+            # ECDH
+
+
+            # data packet
+            data_content = tlv_encoder.getOutput()
+            sign_on_data = Data(interest.name)
+            sign_on_data.content = data_content
+            sign_on_data.metaInfo.freshnessPeriod = 5000
+            #signature
+            self.keychain.signWithSha256(sign_on_data)
+            # reply data
+            _face.putData(sign_on_data)
+            nonlocal done, registerID
+            _face.removeRegisteredPrefix(registerID)
+            done.set()
+
+        def onRegisterFailed(prefix: Name):
+            logging.error("register failed")
+
+        def onRegisterSucceed(_prefix, registeredPrefixId):
+            nonlocal registerID
+            registerID = registeredPrefixId
+
+        async def wait_for_event():
+            ret = False
+            while not ret:
+                ret = done.wait(0.01)
+                await asyncio.sleep(0.01)
+
+        try:
+            logging.info("REGISTER [SIGN ON] PREFIX INTEREST")
+            logging.info(_prefix)
+            face.registerPrefix(_prefix, onInterest, onRegisterFailed, onRegisterSucceed)
+            await wait_for_event()
+            return result
+        except (ConnectionRefusedError, BrokenPipeError) as error:
+            return error
+
     async def bootstrapping(self):
-        ### [SIGN ON - response]: return trust anchor and N2
-        ret = await on_sign_on_interest(self.face,Name('/ndn/sign-on'))
-
-        ### [CERTIFICATE REQUEST - response]: return certificate
-        ret = await on_certificate_request_interest(self.face,Name(controller.system_prefix + '/cert'))
-
-        result = {}
-        return result
+        try:
+            ret = await self.on_sign_on_interest(self.face,Name('/ndn/sign-on'))
+            # ### [CERTIFICATE REQUEST - response]: return certificate
+            # ret = await on_certificate_request_interest(self.face,Name(self.system_prefix + '/cert'))
+            return {'st_code':200}
+        except Exception as e:
+            logging.error(str(e))
+            return {'st_code': 500}
 
     def get_access_status(self, parameter_list):
         pass
@@ -334,6 +410,7 @@ class Controller:
             self.real_service_list[sname.toUri()] = cur_time + fresh_period
 
     def on_sd_ctl_interest(self, _prefix, interest: Interest, face: Face, _filter_id, _interest_filter):
+        logging.info("SD : on interest")
         param = interest.applicationParameters.toBytes()
         if param is None:
             logging.error("Malformed Interest")

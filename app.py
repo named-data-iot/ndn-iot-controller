@@ -63,6 +63,12 @@ def app_main():
         logging.info(existing_shared_secrets)
         return render_template('bootstrapping.html',existing_shared_secrets = existing_shared_secrets)
 
+    ### room
+    @app.route('/room')
+    def room():
+        room_list = []
+        return render_template("room.html",room_list= room_list)
+
     ### trigger bootstrapping process
     @app.route('/exec/bootstrapping', methods=['POST'])
     def bootstrap_device():
@@ -73,7 +79,7 @@ def app_main():
             logging.info("No response: device bootstrapping")
         else:
             logging.info("Bootstrap device")
-        return redirect(url_for('device_list'))
+        return {}
 
     ###add shared_secrets
     @app.route('/add/shared_secrets',methods=['POST'])
