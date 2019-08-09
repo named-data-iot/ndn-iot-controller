@@ -16,7 +16,7 @@ import json
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
                         datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.INFO,
+                        level=logging.DEBUG,
                         style='{')
 
     base_path = os.getcwd()
@@ -140,6 +140,12 @@ def app_main():
             service_list = []
         else:
             service_list = load["service"]
+
+        for item in service_list:
+            if 'expTime' in item:
+                print(item)
+                item['expTime'] = time.ctime(int(item['expTime']) / 1000.0)
+
         # The following code is only for sample use
         return render_template('service-list.html', service_list=service_list)
 

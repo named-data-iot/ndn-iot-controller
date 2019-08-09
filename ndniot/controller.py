@@ -16,9 +16,9 @@ from .asyncndn import fetch_data_packet,\
     decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
 from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, \
     FaceQueryFilterMessage, FaceStatusMessage
-from .db_storage_pb2 import DeviceList, ServiceList, AccessList,SharedSecrets
 from .tlvtree import TLVTree
 from .ECDH import ECDH
+from .db_storage_pb2 import DeviceList, ServiceList, AccessList, SharedSecrets, ServiceItem
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -36,7 +36,7 @@ class Controller:
         self.system_anchor = None
         self.db = None
         self.device_list = DeviceList()
-        self.service_list = ServiceList()
+        # self.service_list = ServiceList()
         self.real_service_list = {}
         self.access_list = AccessList()
         self.shared_secret_list = SharedSecrets()
@@ -83,7 +83,9 @@ class Controller:
         # 2. SERVICES: get service list and corresponding providers
         ret = self.db.get(b'service_list')
         if ret:
-            self.service_list.ParseFromString(ret)
+            srv_lst = ServiceList()
+            srv_lst.ParseFromString(ret)
+            self.service_list = srv_lst
         # 3. ACCESS CONTROL: get all the encryption/decryption key pairs
         ret = self.db.get(b'access_list')
         if ret:
@@ -472,3 +474,20 @@ class Controller:
         self.face.registerPrefix(sd_ctl_prefix, None, self.on_register_failed)
         # /<home-prefix>/<SD_CTL=2>/<SD_CTL_META=0>
         self.face.setInterestFilter(Name(sd_ctl_prefix).append(Name.Component.fromNumber(0)), self.on_sd_ctl_interest)
+
+    def get_service_list(self):
+        ret = ServiceList()
+        for sname, exp_time in self.real_service_list.items():
+            item = ServiceItem()
+            item.service_id = Name(sname)[2].toNumber()
+            item.service_name = sname
+            item.exp_time = exp_time
+            ret.service.append(item)
+        return ret
+
+    def set_service_list(self, srv_lst):
+        self.real_service_list = {}
+        for item in srv_lst.service:
+            self.real_service_list[item.service_name] = item.exp_time
+
+    service_list = property(get_service_list, set_service_list)
