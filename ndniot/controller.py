@@ -18,6 +18,7 @@ from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, Cr
     FaceQueryFilterMessage, FaceStatusMessage
 from .db_storage_pb2 import DeviceList, ServiceList, AccessList,SharedSecrets
 from .tlvtree import TLVTree
+from .ECDH import ECDH
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -134,11 +135,13 @@ class Controller:
     async def on_sign_on_interest(self,face: Face, _prefix: Name):
 
         done = threading.Event()
-        result = {'DeviceIdentifier': None, 'DeviceCapability': None, 'N1PublicKey': None}
+        result = {'DeviceIdentifier': None, 'DeviceCapability': None,'N1PublicKey': None,\
+                  'N2PrivateKey':None,'SharedKey':None,'Salt':None}
         registerID = -1
 
-        TLV_SSP_DEVICE_IDENTIFIER = 142
-        TLV_SSP_DEVICE_CAPABILITIES = 143
+        TLV_GenericNameComponent = 8
+        TLV_SEC_BOOT_CAPACITIES = 160
+        TLV_AC_ECDH_PUB = 130
         TLV_SSP_N1_PUB = 144
         TLV_Data = 6
         TLV_AC_ECDH_PUB = 130
@@ -153,29 +156,54 @@ class Controller:
             tlv_ret = TLVTree(interest.applicationParameters.toBytes()).get_dict()
             logging.info(interest.applicationParameters.toBytes())
             logging.info(tlv_ret)
-            d_i = tlv_ret.get(TLV_SSP_DEVICE_IDENTIFIER)
-            d_c = tlv_ret.get(TLV_SSP_DEVICE_CAPABILITIES)
+            d_i = tlv_ret.get(TLV_GenericNameComponent)
+            d_c = tlv_ret.get(TLV_SEC_BOOT_CAPACITIES)
             n1_pub = tlv_ret.get(TLV_SSP_N1_PUB)
             if not d_i or not d_c or not n1_pub:
                 raise KeyError("[SIGN ON]: lack interest parameters")
-            nonlocal result
+            nonlocal result,self
             result['DeviceIdentifier'] = d_i
             result['DeviceCapability'] = d_c
             result['N1PublicKey'] = n1_pub
+            # Check preshared secrets from level db
+            found = False
+            preshared_secrets = {}
+            # for ss in self.shared_secret_list.sharedsecrets:
+            #     if ss.device_identifier == result["DeviceIdentifier"]:
+            #         preshared_secrets['PublicKey'] = ss.public_key
+            #         preshared_secrets['SymmetricKey'] = ss.symmetric_key
+            #         found = True
+            #         break
+            # if not found:
+            #     raise ValueError("[SIGN ON]: no preshared information about the device")
 
+            # this is testing code - delete later
+            preshared_secrets['PublicKey'] = b'\x90\xa6\xbc\xe8\x00W\xc0e\xe9\x8a\\\x05(d\x9a\x99y\xc1\x10\x0f\xf8\x8a\xd0IU\xaa\xbf\xbb\x1b\\\xe2\xab9W\x89\x96\xb5\xee:\xf9_\xd3\x89\x15\xdc3\x7fg\xcaRb\t\xbe\x88Y\xe2\xbc\xcf\xbd\xd4\x18\xdd8\x01'
+            preshared_secrets['SymmetricKey'] = b'Ti\xb8\xc0\xb6(wp\x1c\xdd\xe8\x89\x92\x03\xfd\xde'
+
+            # TODO:Verifying the signature
+
+
+            # encode data content
             tlv_encoder = TlvEncoder()
             # trust anchor
-            nonlocal self
             tlv_encoder.writeBlobTlv(TLV_Data,bytes(self.system_anchor.__str__(),'utf-8'))
             # ECDH
-
-
+            ecdh = ECDH()
+            result['N2PrivateKey'] = ecdh.prv_key.to_string()
+            result['N2PublicKey'] = ecdh.pub_key.to_string()
+            # random string for salt
+            result['Salt'] = b'hello,world'
+            ecdh.encrypt(result['N1PublicKey'],result['Salt'])
+            result['SharedKey'] = ecdh.derived_key
+            tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB,result['N2PublicKey'])
+            tlv_encoder.writeBlobTlv(TLV_AC_SALT,result['Salt'])
             # data packet
             data_content = tlv_encoder.getOutput()
             sign_on_data = Data(interest.name)
             sign_on_data.content = data_content
             sign_on_data.metaInfo.freshnessPeriod = 5000
-            #signature
+            # TODO: sign hmac key
             self.keychain.signWithSha256(sign_on_data)
             # reply data
             _face.putData(sign_on_data)
