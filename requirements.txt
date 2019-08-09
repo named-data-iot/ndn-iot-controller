@@ -21,5 +21,5 @@ pypng>=0.0.20
 pillow>=6.1.0
 pyzbar>=0.1.8
 ecdsa>=0.13.2
-fastecdsa>=1.7.4
-asn1>=2.2.0
+pycryptodome
+

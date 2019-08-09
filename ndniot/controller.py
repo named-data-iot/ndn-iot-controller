@@ -10,8 +10,10 @@ from pyndn.encoding import ProtobufTlv
 from pyndn.encoding.tlv.tlv_encoder import TlvEncoder
 import pyndn.transport
 from pyndn.transport.unix_transport import UnixTransport
+from pyndn.security.pib.pib_identity import PibIdentity
 from pyndn.security.pib.pib_key import PibKey
 from pyndn.security.v2.certificate_v2 import CertificateV2
+from pyndn.security.key_params import EcKeyParams
 from .asyncndn import fetch_data_packet,\
     decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
 from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, \
@@ -19,6 +21,12 @@ from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, Cr
 from .tlvtree import TLVTree
 from .ECDH import ECDH
 from .db_storage_pb2 import DeviceList, ServiceList, AccessList, SharedSecrets, ServiceItem
+from hashlib import sha256
+from os import urandom
+from Crypto.Cipher import AES
+from base64 import b64encode
+from pyndn.util import Blob
+
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -137,14 +145,21 @@ class Controller:
     async def on_sign_on_interest(self,face: Face, _prefix: Name):
 
         done = threading.Event()
-        result = {'DeviceIdentifier': None, 'DeviceCapability': None,'N1PublicKey': None,\
-                  'N2PrivateKey':None,'SharedKey':None,'Salt':None}
+        result = {'DeviceIdentifier': None,
+                  'DeviceCapability': None,
+                  'N1PublicKey': None,
+                  'N2PrivateKey':None,
+                  'N2PublicKey':None,
+                  'SharedKey':None,
+                  'Salt':None,
+                  'TrustAnchorDigest':None,
+                  'SharedPublicKey':None,
+                  'SharedSymmetricKey':None}
         registerID = -1
 
         TLV_GenericNameComponent = 8
         TLV_SEC_BOOT_CAPACITIES = 160
         TLV_AC_ECDH_PUB = 130
-        TLV_SSP_N1_PUB = 144
         TLV_Data = 6
         TLV_AC_ECDH_PUB = 130
         TLV_AC_SALT = 131
@@ -153,6 +168,24 @@ class Controller:
         def onInterest(prefix, interest: Interest, _face: Face, interestFilterId, filter):
             logging.info("[SIGN ON]: interest received")
             logging.info(interest.name)
+            # TODO: Verify the signature:pre_installed_ecc_key
+            # get pre-shared keys from level db
+            nonlocal result
+            found = False
+            # for ss in self.shared_secret_list.sharedsecrets:
+            #     if ss.device_identifier == result["DeviceIdentifier"]:
+            #         result['SharedPublicKey'] = ss.public_key
+            #         result['SharedSymmetricKey'] = ss.symmetric_key
+            #         found = True
+            #         break
+            # if not found:
+            #     raise ValueError("[SIGN ON]: no preshared information about the device")
+            # this is testing code - delete later
+            result['SharedPublicKey'] = b'\x90\xa6\xbc\xe8\x00W\xc0e\xe9\x8a\\\x05(d\x9a\x99y\xc1\x10\x0f\xf8\x8a\xd0IU\xaa\xbf\xbb\x1b\\\xe2\xab9W\x89\x96\xb5\xee:\xf9_\xd3\x89\x15\xdc3\x7fg\xcaRb\t\xbe\x88Y\xe2\xbc\xcf\xbd\xd4\x18\xdd8\x01'
+            result['SharedSymmetricKey'] = b'Ti\xb8\xc0\xb6(wp\x1c\xdd\xe8\x89\x92\x03\xfd\xde'
+            shared_public_key = Blob(result['SharedPublicKey'])
+
+            ## parse the parameters of interest
             if not interest.hasParameters():
                 raise ValueError("[SIGN ON]: interest has no parameters")
             tlv_ret = TLVTree(interest.applicationParameters.toBytes()).get_dict()
@@ -160,53 +193,43 @@ class Controller:
             logging.info(tlv_ret)
             d_i = tlv_ret.get(TLV_GenericNameComponent)
             d_c = tlv_ret.get(TLV_SEC_BOOT_CAPACITIES)
-            n1_pub = tlv_ret.get(TLV_SSP_N1_PUB)
+            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
             if not d_i or not d_c or not n1_pub:
                 raise KeyError("[SIGN ON]: lack interest parameters")
-            nonlocal result,self
+            nonlocal self
+            #TODO: check whether the device has already bootstrapped
+
             result['DeviceIdentifier'] = d_i
             result['DeviceCapability'] = d_c
             result['N1PublicKey'] = n1_pub
-            # Check preshared secrets from level db
-            found = False
-            preshared_secrets = {}
-            # for ss in self.shared_secret_list.sharedsecrets:
-            #     if ss.device_identifier == result["DeviceIdentifier"]:
-            #         preshared_secrets['PublicKey'] = ss.public_key
-            #         preshared_secrets['SymmetricKey'] = ss.symmetric_key
-            #         found = True
-            #         break
-            # if not found:
-            #     raise ValueError("[SIGN ON]: no preshared information about the device")
-
-            # this is testing code - delete later
-            preshared_secrets['PublicKey'] = b'\x90\xa6\xbc\xe8\x00W\xc0e\xe9\x8a\\\x05(d\x9a\x99y\xc1\x10\x0f\xf8\x8a\xd0IU\xaa\xbf\xbb\x1b\\\xe2\xab9W\x89\x96\xb5\xee:\xf9_\xd3\x89\x15\xdc3\x7fg\xcaRb\t\xbe\x88Y\xe2\xbc\xcf\xbd\xd4\x18\xdd8\x01'
-            preshared_secrets['SymmetricKey'] = b'Ti\xb8\xc0\xb6(wp\x1c\xdd\xe8\x89\x92\x03\xfd\xde'
-
-            # TODO:Verifying the signature
-
 
             # encode data content
             tlv_encoder = TlvEncoder()
             # trust anchor
-            tlv_encoder.writeBlobTlv(TLV_Data,bytes(self.system_anchor.__str__(),'utf-8'))
+            trust_anchor_bytes = bytes(self.system_anchor.__str__(),'utf-8')
+            tlv_encoder.writeBlobTlv(TLV_Data,trust_anchor_bytes)
+            m = sha256()
+            m.update(trust_anchor_bytes)
+            result['TrustAnchorDigest'] = m.digest()
             # ECDH
             ecdh = ECDH()
             result['N2PrivateKey'] = ecdh.prv_key.to_string()
             result['N2PublicKey'] = ecdh.pub_key.to_string()
-            # random string for salt
-            result['Salt'] = b'hello,world'
+            # random 16 bytes for salt
+            result['Salt'] = urandom(16)
             ecdh.encrypt(result['N1PublicKey'],result['Salt'])
             result['SharedKey'] = ecdh.derived_key
             tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB,result['N2PublicKey'])
             tlv_encoder.writeBlobTlv(TLV_AC_SALT,result['Salt'])
             # data packet
+            logging.info(result)
             data_content = tlv_encoder.getOutput()
             sign_on_data = Data(interest.name)
             sign_on_data.content = data_content
             sign_on_data.metaInfo.freshnessPeriod = 5000
-            # TODO: sign hmac key
-            self.keychain.signWithSha256(sign_on_data)
+            # sign with pre_installed_hmac_key
+            shared_symmetric_key = Blob(result['SharedSymmetricKey'])
+            self.keychain.signWithHmacWithSha256(sign_on_data, shared_symmetric_key)
             # reply data
             _face.putData(sign_on_data)
             nonlocal done, registerID
@@ -235,11 +258,104 @@ class Controller:
         except (ConnectionRefusedError, BrokenPipeError) as error:
             return error
 
-    async def bootstrapping(self):
+    async def on_certificate_request_interest(self,face: Face, _prefix: Name, stage_one_result):
+        done = threading.Event()
+        registerID = -1
+
+        TLV_GenericNameComponent = 8
+        TLV_AC_ECDH_PUB = 130
+        TLV_SEC_BOOT_ANCHOR_DIGEST = 161
+        TLV_Data = 6
+        TLV_AC_AES_IV = 135
+        TLV_AC_ENCRYPTED_PAYLOAD = 136
+
+
+        def onInterest(prefix, interest: Interest, _face: Face, interestFilterId, filter):
+            logging.info("[CERT REQ]: interest received")
+            logging.info(interest.name)
+            # TODO:Verifying the signature:pre_installed_ecc_key
+            ## parse the parameters of interest
+            if not interest.hasParameters():
+                raise ValueError("[CERT REQ]: interest has no parameters")
+            tlv_ret = TLVTree(interest.applicationParameters.toBytes()).get_dict()
+            logging.info(interest.applicationParameters.toBytes())
+            logging.info(tlv_ret)
+            d_i = tlv_ret.get(TLV_GenericNameComponent)
+            n2_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
+            anchor_digest = tlv_ret.get(TLV_SEC_BOOT_ANCHOR_DIGEST)
+            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
+            ## verify whether the parameters are as required
+            if not d_i or not n2_pub or not anchor_digest or not n1_pub:
+                raise KeyError("[CERT REQ]: lacking interest parameters")
+            nonlocal stage_one_result
+            if d_i != stage_one_result['DeviceIdentifier'] or \
+                    n2_pub != stage_one_result['N2PublicKey'] or \
+                    anchor_digest != stage_one_result['TrustAnchorDigest'] or \
+                    n1_pub != stage_one_result['N1PublicKey']:
+                raise ValueError("[CERT REQ]: unauthenticated request")
+            # encode data content
+            tlv_encoder = TlvEncoder()
+            # anchor signed certificate
+            # create identity and key for the device
+            device_identity = self.keychain.createIdentity(Name(d_i),EcKeyParams())
+            device_key = device_identity.getDefaultKey()
+            device_certificate = device_key.getDefaultCertificate()
+            device_safebag = self.keychain.exportSafeBag(device_certificate)
+            device_private_key = device_safebag.getPrivateKeyBag()
+            logging.info(device_private_key)
+            # certificate
+            tlv_encoder.writeBlobTlv(TLV_Data,bytes(device_certificate.__str__(),'utf-8'))
+            cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC)
+            ct_bytes = cipher.encrypt(device_private_key)
+            # AES IV
+            iv = b64encode(cipher.iv).decode('utf-8')
+            # encrpted device private key with temporary symmetric key
+            ct = b64encode(ct_bytes).decode('utf-8')
+            tlv_encoder.writeBlobTlv(TLV_AC_AES_IV,iv)
+            tlv_encoder.writeBlobTlv(TLV_AC_ENCRYPTED_PAYLOAD,ct)
+            # data packet
+            data_content = tlv_encoder.getOutput()
+            cert_req_data = Data(interest.name)
+            cert_req_data.content = data_content
+            cert_req_data.metaInfo.freshnessPeriod = 5000
+            # sign with pre_installed_hmac_key
+            shared_symmetric_key = Blob(stage_one_result['SharedSymmetricKey'])
+            self.keychain.signWithHmacWithSha256(cert_req_data, shared_symmetric_key)
+            # reply data
+            _face.putData()
+            nonlocal done, registerID
+            _face.removeRegisteredPrefix(registerID)
+            done.set()
+
+        def onRegisterFailed(prefix: Name):
+            logging.error("register failed")
+
+        def onRegisterSucceed(_prefix, registeredPrefixId):
+            nonlocal registerID
+            registerID = registeredPrefixId
+
+        async def wait_for_event():
+            ret = False
+            while not ret:
+                ret = done.wait(0.01)
+                await asyncio.sleep(0.01)
+
         try:
+            logging.info("REGISTER [CERT REQ] PREFIX INTEREST")
+            logging.info(_prefix)
+            face.registerPrefix(_prefix, onInterest, onRegisterFailed, onRegisterSucceed)
+            await wait_for_event()
+        except (ConnectionRefusedError, BrokenPipeError) as error:
+            return error
+
+
+    async def bootstrapping(self):
+
+        try:
+            #sign on
             ret = await self.on_sign_on_interest(self.face,Name('/ndn/sign-on'))
-            # ### [CERTIFICATE REQUEST - response]: return certificate
-            # ret = await on_certificate_request_interest(self.face,Name(self.system_prefix + '/cert'))
+            #certificate request
+            await self.on_certificate_request_interest(self.face,Name(self.system_prefix + '/cert'),ret)
             return {'st_code':200}
         except Exception as e:
             logging.error(str(e))
