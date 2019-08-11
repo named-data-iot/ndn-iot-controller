@@ -603,7 +603,9 @@ class Controller:
 
     def set_service_list(self, srv_lst):
         self.real_service_list = {}
+        cur_time = self.get_time_now_ms()
         for item in srv_lst.service:
-            self.real_service_list[item.service_name] = item.exp_time
+            if item.exp_time > cur_time:
+                self.real_service_list[item.service_name] = item.exp_time
 
     service_list = property(get_service_list, set_service_list)
