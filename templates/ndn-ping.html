@@ -23,6 +23,9 @@
   <el-form-item label="Interest life time">
      <el-input v-model="form.interest_lifetime" label="Interest lifetime" style="width:20%"></el-input>
   </el-form-item>
+  <el-form-item label="Application Parameter">
+     <el-input v-model="form.application_parameter" label="Application Parameter" style="width:20%"></el-input>
+  </el-form-item>
   <el-form-item>
     <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">Express Interest</el-button>
   </el-form-item>
@@ -66,7 +69,8 @@
           name:'',
           can_be_prefix:true,
           must_be_fresh:false,
-          interest_lifetime:4
+          interest_lifetime:4,
+          application_parameter:''
         }
       }
      },
@@ -77,7 +81,8 @@
                       {name: this.form.name,
                        can_be_prefix: this.form.can_be_prefix,
                        must_be_fresh: this.form.must_be_fresh,
-                       interest_lifetime: this.form.interest_lifetime},
+                       interest_lifetime: this.form.interest_lifetime,
+                       application_parameter: this.form.application_parameter},
                        {
                         headers: {'Content-Type': 'application/json'}
                        }).then(response=>{});

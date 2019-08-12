@@ -184,8 +184,9 @@ def app_main():
     def exec_ndn_ping():
         r_json = request.get_json()
         name = r_json['name']
-        can_be_prefix = r_json['can_be_prefix'] == 'true'
-        must_be_fresh = r_json['must_be_fresh'] == 'true'
+        can_be_prefix = r_json['can_be_prefix']
+        must_be_fresh = r_json['must_be_fresh']
+        param = r_json['application_parameter']
         try:
             interest_lifetime = float(r_json['interest_lifetime']) * 1000.0
         except ValueError:
@@ -195,10 +196,17 @@ def app_main():
         interest.canBePrefix = can_be_prefix
         interest.mustBeFresh = must_be_fresh
         interest.interestLifetimeMilliseconds = interest_lifetime
+        if param != '':
+            try:
+                interest.applicationParameters = int(param).to_bytes(1, 'little')
+            except ValueError:
+                pass
+        interest.appendParametersDigestToName()
         st_time = time.time()
         ret = run_until_complete(controller.express_interest(interest))
         ed_time = time.time()
         response_time = '{:.3f}s'.format(ed_time - st_time)
+        print(response_time, ret)
         return render_template('ndn-ping.html', response_time=response_time, **ret)
 
     ## NFD Management
