@@ -207,7 +207,8 @@ def app_main():
         ed_time = time.time()
         response_time = '{:.3f}s'.format(ed_time - st_time)
         print(response_time, ret)
-        return render_template('ndn-ping.html', response_time=response_time, **ret)
+        ret['response_time'] = response_time
+        return jsonify(ret)
 
     ## NFD Management
     # @app.route('/nfd-management')

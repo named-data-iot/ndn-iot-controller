@@ -32,28 +32,6 @@
   </el-form>
 </div>
 
-
-{% if response_time %}
-  <h2>Response</h2>
-  <p>Response Time: {{ response_time|e }}</p>
-  <p>Response Type: {{ response_type|e }}</p>
-  <p>Name: {{ name|e }}</p>
-{% endif %}
-{% if content_type %}
-  <p>ContentType: {{ content_type|e }}</p>
-{% endif %}
-{% if freshness_period %}
-  <p>FreshnessPeriod: {{ freshness_period|e }}</p>
-{% endif %}
-{% if final_block_id %}
-  <p>FinalBlockId: {{ final_block_id|e }}</p>
-{% endif %}
-{% if signature_type %}
-  <p>SignatureType: {{ signature_type|e }}</p>
-{% endif %}
-{% if reason %}
-  <p>Reason Code: {{ reason|e }}</p>
-{% endif %}
 </body>
 </html>
 
@@ -65,12 +43,12 @@
     el:'#ndn_form',
     data(){
       return{
-        form:{
-          name:'',
-          can_be_prefix:true,
-          must_be_fresh:false,
-          interest_lifetime:4,
-          application_parameter:''
+          form: {
+            name: '',
+            can_be_prefix: true,
+            must_be_fresh: false,
+            interest_lifetime: 4,
+            application_parameter: ''
         }
       }
      },
@@ -85,7 +63,39 @@
                        application_parameter: this.form.application_parameter},
                        {
                         headers: {'Content-Type': 'application/json'}
-                       }).then(response=>{});
+                       }).then(response=>{
+                           ret = response.data;
+                           if (ret.response_type === 'Timeout'){
+                               this.$notify({
+                                  title: 'Timeout',
+                                  message: 'Response Time:' + ret.response_time +
+                                      ',Response Type:' + ret.response_type +
+                                      ',Name:' + ret.name,
+                                  type: 'error'
+                               });
+                           }else if (ret.response_type === 'NetworkNack'){
+                               this.$notify({
+                                  title: 'NetworkNack',
+                                  message: 'Response Time:' + ret.response_time +
+                                      ',Response Type:' + ret.response_type +
+                                      ',Name:' + ret.name +
+                                      ',Reason:' + ret.reason,
+                                  type: 'error'
+                               });
+                           }else{
+                               this.$notify({
+                                  title: 'Success',
+                                  message: 'Response Time:' + ret.response_time +
+                                      ',Response Type:' + ret.response_type +
+                                      ',Name:' + ret.name +
+                                      ',Content Type:' + ret.content_type +
+                                      ',Freshness Period:' + ret.freshness_period +
+                                      ',Final Block Id:' + ret.final_block_id +
+                                      ',Signature Type:' + ret.signature_type,
+                                  type: 'success'
+                               });
+                           }
+          });
       }
     }
   })
