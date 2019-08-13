@@ -25,6 +25,7 @@ def app_main():
                 static_url_path='/static',
                 static_folder=os.path.join(base_path, 'static'),
                 template_folder=os.path.join(base_path, 'templates'))
+    logging.info(os.path.join(base_path, 'templates'))
 
     app.config['SECRET_KEY'] = '3mlf4j8um6mg2-qlhyzk4ngxxk$8t4hh&$r)%968koxd3i(j#f'
     socketio = SocketIO(app, async_mode='threading')

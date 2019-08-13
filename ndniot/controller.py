@@ -4,7 +4,7 @@ import threading
 import plyvel
 import struct
 import time
-from pyndn import Face, Interest, Data, Name, NetworkNack, InterestFilter
+from pyndn import Face, Interest, Data, Name, NetworkNack, InterestFilter,KeyLocatorType
 from pyndn.security import KeyChain, Pib
 from pyndn.encoding import ProtobufTlv
 from pyndn.encoding.tlv.tlv_encoder import TlvEncoder
@@ -26,6 +26,8 @@ from os import urandom
 from Crypto.Cipher import AES
 from base64 import b64encode
 from pyndn.util import Blob
+from pyndn.hmac_with_sha256_signature import HmacWithSha256Signature
+
 
 
 default_prefix = "/ndn-iot"
@@ -159,7 +161,6 @@ class Controller:
 
         TLV_GenericNameComponent = 8
         TLV_SEC_BOOT_CAPACITIES = 160
-        TLV_AC_ECDH_PUB = 130
         TLV_Data = 6
         TLV_AC_ECDH_PUB = 130
         TLV_AC_SALT = 131
@@ -203,11 +204,12 @@ class Controller:
             result['DeviceCapability'] = d_c
             result['N1PublicKey'] = n1_pub
 
-            # encode data content
-            tlv_encoder = TlvEncoder()
             # trust anchor
-            trust_anchor_bytes = bytes(self.system_anchor.__str__(),'utf-8')
-            tlv_encoder.writeBlobTlv(TLV_Data,trust_anchor_bytes)
+            self.system_anchor
+            trust_anchor_bytes = self.system_anchor.wireEncode().toBytes()
+            logging.info(self.system_anchor.wireEncode().toBytes())
+            logging.info(trust_anchor_bytes)
+            #trust_anchor_bytes = bytes(self.system_anchor.__str__(),'utf-8')
             m = sha256()
             m.update(trust_anchor_bytes)
             result['TrustAnchorDigest'] = m.digest()
@@ -219,8 +221,13 @@ class Controller:
             result['Salt'] = urandom(16)
             ecdh.encrypt(result['N1PublicKey'],result['Salt'])
             result['SharedKey'] = ecdh.derived_key
-            tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB,result['N2PublicKey'])
+
+            # encode data content
+            tlv_encoder = TlvEncoder()
             tlv_encoder.writeBlobTlv(TLV_AC_SALT,result['Salt'])
+            tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB,result['N2PublicKey'])
+            tlv_encoder.writeBlobTlv(TLV_Data,trust_anchor_bytes)
+
             # data packet
             logging.info(result)
             data_content = tlv_encoder.getOutput()
@@ -229,6 +236,10 @@ class Controller:
             sign_on_data.metaInfo.freshnessPeriod = 5000
             # sign with pre_installed_hmac_key
             shared_symmetric_key = Blob(result['SharedSymmetricKey'])
+            signature = HmacWithSha256Signature()
+            signature.getKeyLocator().setType(KeyLocatorType.KEYNAME)
+            #signature.getKeyLocator().setKeyName(Name('key1'))
+            sign_on_data.setSignature(signature)
             self.keychain.signWithHmacWithSha256(sign_on_data, shared_symmetric_key)
             # reply data
             _face.putData(sign_on_data)
@@ -293,8 +304,7 @@ class Controller:
                     anchor_digest != stage_one_result['TrustAnchorDigest'] or \
                     n1_pub != stage_one_result['N1PublicKey']:
                 raise ValueError("[CERT REQ]: unauthenticated request")
-            # encode data content
-            tlv_encoder = TlvEncoder()
+
             # anchor signed certificate
             # create identity and key for the device
             device_identity = self.keychain.createIdentity(Name(d_i),EcKeyParams())
@@ -304,15 +314,19 @@ class Controller:
             device_private_key = device_safebag.getPrivateKeyBag()
             logging.info(device_private_key)
             # certificate
-            tlv_encoder.writeBlobTlv(TLV_Data,bytes(device_certificate.__str__(),'utf-8'))
             cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC)
             ct_bytes = cipher.encrypt(device_private_key)
             # AES IV
             iv = b64encode(cipher.iv).decode('utf-8')
             # encrpted device private key with temporary symmetric key
             ct = b64encode(ct_bytes).decode('utf-8')
-            tlv_encoder.writeBlobTlv(TLV_AC_AES_IV,iv)
+
+            # encode data content
+            tlv_encoder = TlvEncoder()
             tlv_encoder.writeBlobTlv(TLV_AC_ENCRYPTED_PAYLOAD,ct)
+            tlv_encoder.writeBlobTlv(TLV_AC_AES_IV,iv)
+            tlv_encoder.writeBlobTlv(TLV_Data,bytes(device_certificate.__str__(),'utf-8'))
+
             # data packet
             data_content = tlv_encoder.getOutput()
             cert_req_data = Data(interest.name)
@@ -320,6 +334,10 @@ class Controller:
             cert_req_data.metaInfo.freshnessPeriod = 5000
             # sign with pre_installed_hmac_key
             shared_symmetric_key = Blob(stage_one_result['SharedSymmetricKey'])
+            signature = HmacWithSha256Signature()
+            signature.getKeyLocator().setType(KeyLocatorType.KEYNAME)
+            # signature.getKeyLocator().setKeyName(Name('key1'))
+            cert_req_data.setSignature(signature)
             self.keychain.signWithHmacWithSha256(cert_req_data, shared_symmetric_key)
             # reply data
             _face.putData()
@@ -350,7 +368,6 @@ class Controller:
 
 
     async def bootstrapping(self):
-
         try:
             #sign on
             ret = await self.on_sign_on_interest(self.face,Name('/ndn/sign-on'))
