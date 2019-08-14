@@ -27,6 +27,20 @@ from Crypto.Cipher import AES
 from base64 import b64encode
 from pyndn.util import Blob
 from pyndn.hmac_with_sha256_signature import HmacWithSha256Signature
+from ecdsa import SigningKey, VerifyingKey, NIST192p,NIST256p
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption
+from pyndn.security.key_params import EcKeyParams
+from Crypto.IO.PKCS8 import wrap,unwrap
+from pyndn.encoding.der import DerNode
+from pyndn.security.security_types import KeyType
+from pyndn.security.tpm.tpm_private_key import TpmPrivateKey
+
+
+
+
+
 
 
 
@@ -39,7 +53,7 @@ class Controller:
         self.running = True
         self.networking_ready = False
         self.emit = emit_func
-        self.keychain = KeyChain()
+        self.keychain = KeyChain('pib-memory','tpm-memory')
         self.face = None
 
         self.system_prefix = None
@@ -81,7 +95,7 @@ class Controller:
             self.system_prefix = default_prefix
             self.db.put(b'system_prefix', default_prefix.encode())
         # 2. get system root anchor certificate and private key (from keychain)
-        cur_id = self.keychain.createIdentityV2(Name(self.system_prefix))
+        cur_id = self.keychain.createIdentityV2(Name(self.system_prefix),EcKeyParams())
         self.system_anchor = cur_id.getDefaultKey().getDefaultCertificate()
         logging.info("Server finishes the step 1 initialization")
 
@@ -161,8 +175,8 @@ class Controller:
 
         TLV_GenericNameComponent = 8
         TLV_SEC_BOOT_CAPACITIES = 160
-        TLV_Data = 6
-        TLV_AC_ECDH_PUB = 130
+        TLV_AC_ECDH_PUB_N1 = 162
+        TLV_AC_ECDH_PUB_N2 = 163
         TLV_AC_SALT = 131
 
 
@@ -194,7 +208,7 @@ class Controller:
             logging.info(tlv_ret)
             d_i = tlv_ret.get(TLV_GenericNameComponent)
             d_c = tlv_ret.get(TLV_SEC_BOOT_CAPACITIES)
-            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
+            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB_N1)
             if not d_i or not d_c or not n1_pub:
                 raise KeyError("[SIGN ON]: lack interest parameters")
             nonlocal self
@@ -205,9 +219,10 @@ class Controller:
             result['N1PublicKey'] = n1_pub
 
             # trust anchor
-            self.system_anchor
             trust_anchor_bytes = self.system_anchor.wireEncode().toBytes()
-            logging.info(self.system_anchor.wireEncode().toBytes())
+            logging.info(self.system_anchor)
+            logging.info(self.system_anchor.getContent().toBytes())
+            logging.info(self.system_anchor.wireEncode().toHex())
             logging.info(trust_anchor_bytes)
             #trust_anchor_bytes = bytes(self.system_anchor.__str__(),'utf-8')
             m = sha256()
@@ -225,8 +240,8 @@ class Controller:
             # encode data content
             tlv_encoder = TlvEncoder()
             tlv_encoder.writeBlobTlv(TLV_AC_SALT,result['Salt'])
-            tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB,result['N2PublicKey'])
-            tlv_encoder.writeBlobTlv(TLV_Data,trust_anchor_bytes)
+            tlv_encoder.writeBlobTlv(TLV_AC_ECDH_PUB_N2,result['N2PublicKey'])
+            tlv_encoder.writeBuffer(trust_anchor_bytes)
 
             # data packet
             logging.info(result)
@@ -243,6 +258,7 @@ class Controller:
             self.keychain.signWithHmacWithSha256(sign_on_data, shared_symmetric_key)
             # reply data
             _face.putData(sign_on_data)
+            logging.info(result)
             nonlocal done, registerID
             _face.removeRegisteredPrefix(registerID)
             done.set()
@@ -274,7 +290,8 @@ class Controller:
         registerID = -1
 
         TLV_GenericNameComponent = 8
-        TLV_AC_ECDH_PUB = 130
+        TLV_AC_ECDH_PUB_N1 = 162
+        TLV_AC_ECDH_PUB_N2 = 163
         TLV_SEC_BOOT_ANCHOR_DIGEST = 161
         TLV_Data = 6
         TLV_AC_AES_IV = 135
@@ -292,13 +309,18 @@ class Controller:
             logging.info(interest.applicationParameters.toBytes())
             logging.info(tlv_ret)
             d_i = tlv_ret.get(TLV_GenericNameComponent)
-            n2_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
+            n2_pub = tlv_ret.get(TLV_AC_ECDH_PUB_N2)
             anchor_digest = tlv_ret.get(TLV_SEC_BOOT_ANCHOR_DIGEST)
-            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB)
+            n1_pub = tlv_ret.get(TLV_AC_ECDH_PUB_N1)
             ## verify whether the parameters are as required
             if not d_i or not n2_pub or not anchor_digest or not n1_pub:
                 raise KeyError("[CERT REQ]: lacking interest parameters")
             nonlocal stage_one_result
+            logging.info(stage_one_result)
+            logging.info(d_i)
+            logging.info(n2_pub)
+            logging.info(anchor_digest)
+            logging.info(n1_pub)
             if d_i != stage_one_result['DeviceIdentifier'] or \
                     n2_pub != stage_one_result['N2PublicKey'] or \
                     anchor_digest != stage_one_result['TrustAnchorDigest'] or \
@@ -307,25 +329,62 @@ class Controller:
 
             # anchor signed certificate
             # create identity and key for the device
-            device_identity = self.keychain.createIdentity(Name(d_i),EcKeyParams())
-            device_key = device_identity.getDefaultKey()
-            device_certificate = device_key.getDefaultCertificate()
-            device_safebag = self.keychain.exportSafeBag(device_certificate)
-            device_private_key = device_safebag.getPrivateKeyBag()
-            logging.info(device_private_key)
-            # certificate
-            cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC)
-            ct_bytes = cipher.encrypt(device_private_key)
+            device_name = Name(self.system_prefix + '/' + d_i.decode('utf-8'))
+            cert_id = self.keychain.createIdentityV2(device_name, EcKeyParams())
+            cert = cert_id.getDefaultKey().getDefaultCertificate()
+            cert_bytes = cert.wireEncode().toBytes()
+            cert_safe_bag = self.keychain.exportSafeBag(cert, None)
+            crypto_cert_prv_key = cert_safe_bag.getPrivateKeyBag()
+
+            # Decode the PKCS #8 DER to find the algorithm OID.
+            oidString = None
+            try:
+                parsedNode = DerNode.parse(crypto_cert_prv_key.buf())
+                pkcs8Children = parsedNode.getChildren()
+                algorithmIdChildren = DerNode.getSequence(
+                    pkcs8Children, 1).getChildren()
+                oidString = "" + algorithmIdChildren[0].toVal()
+            except Exception as ex:
+                raise TpmPrivateKey.Error(
+                    "Cannot decode the PKCS #8 private key: " + str(ex))
+
+            if oidString == TpmPrivateKey.EC_ENCRYPTION_OID:
+                keyType = KeyType.EC
+            elif oidString == TpmPrivateKey.RSA_ENCRYPTION_OID:
+                keyType = KeyType.RSA
+            else:
+                raise TpmPrivateKey.Error(
+                    "loadPkcs8: Unrecognized private key OID: " + oidString)
+
+            if keyType == KeyType.EC or keyType == KeyType.RSA:
+                _privateKey = serialization.load_der_private_key(
+                    crypto_cert_prv_key.toBytes(), password=None, backend=default_backend())
+            else:
+                raise TpmPrivateKey.Error(
+                    "loadPkcs8: Unrecognized keyType: " + str(keyType))
+            cert_prv_key_hex = unwrap(_privateKey.private_bytes(Encoding.DER,PrivateFormat.PKCS8,NoEncryption()))[1].hex()[14:78]
+            cert_prv_key = bytes.fromhex(cert_prv_key_hex)
+            logging.info("Private KEY:")
+            logging.info(cert_prv_key)
+            # AES
+            iv = urandom(16)
+            cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC,iv)
+            ct_bytes = cipher.encrypt(cert_prv_key)
+            logging.info('Symmetic Key')
+            logging.info(stage_one_result['SharedKey'])
             # AES IV
-            iv = b64encode(cipher.iv).decode('utf-8')
+            logging.info("IV:")
+            logging.info(iv)
             # encrpted device private key with temporary symmetric key
-            ct = b64encode(ct_bytes).decode('utf-8')
+            ct = b64encode(ct_bytes)
+            logging.info("Cipher:")
+            logging.info(ct)
 
             # encode data content
             tlv_encoder = TlvEncoder()
             tlv_encoder.writeBlobTlv(TLV_AC_ENCRYPTED_PAYLOAD,ct)
             tlv_encoder.writeBlobTlv(TLV_AC_AES_IV,iv)
-            tlv_encoder.writeBlobTlv(TLV_Data,bytes(device_certificate.__str__(),'utf-8'))
+            tlv_encoder.writeBuffer(cert_bytes)
 
             # data packet
             data_content = tlv_encoder.getOutput()
@@ -340,7 +399,7 @@ class Controller:
             cert_req_data.setSignature(signature)
             self.keychain.signWithHmacWithSha256(cert_req_data, shared_symmetric_key)
             # reply data
-            _face.putData()
+            _face.putData(cert_req_data)
             nonlocal done, registerID
             _face.removeRegisteredPrefix(registerID)
             done.set()
