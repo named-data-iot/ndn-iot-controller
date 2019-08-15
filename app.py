@@ -77,11 +77,9 @@ def app_main():
         r_json = request.get_json()
         #shared_secret = r_json['secret']
         ret = run_until_complete(controller.bootstrapping())
-        if ret is None:
-            logging.info("No response: device bootstrapping")
-        else:
-            logging.info("Bootstrap device")
-        return {}
+        logging.info("Bootstrap result:")
+        logging.info(ret)
+        return jsonify(ret)
 
     ###add shared_secrets
     @app.route('/add/shared_secrets',methods=['POST'])
