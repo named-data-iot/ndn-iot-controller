@@ -12,6 +12,7 @@ from google.protobuf import json_format
 from PIL import Image
 from pyzbar.pyzbar import decode
 import json
+from pyndn.util.blob import Blob
 
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
@@ -183,6 +184,7 @@ def app_main():
 
     @app.route('/exec/ndn-ping', methods=['POST'])
     def exec_ndn_ping():
+        controller.decode_crypto_public_key(controller.get_crypto_public_key(controller.system_anchor))
         r_json = request.get_json()
         name = r_json['name']
         can_be_prefix = r_json['can_be_prefix']
@@ -207,8 +209,10 @@ def app_main():
         if signed_interest:
             data_parameter = Data(interest.name)
             controller.keychain.sign(data_parameter, controller.system_anchor.getName())
-            data_parameter_blob = data_parameter.wireEncode()
-            interest.setApplicationParameters(data_parameter_blob)
+            data_parameter_blob_bytes = data_parameter.wireEncode().toBytes()
+            existing_parameter_bytes = interest.getApplicationParameters().toBytes()
+            whole_parameter_bytes = existing_parameter_bytes + data_parameter_blob_bytes
+            interest.setApplicationParameters(Blob(whole_parameter_bytes))
         st_time = time.time()
         ret = run_until_complete(controller.express_interest(interest))
         ed_time = time.time()

@@ -30,7 +30,7 @@ from pyndn.hmac_with_sha256_signature import HmacWithSha256Signature
 from ecdsa import SigningKey, VerifyingKey, NIST192p,NIST256p
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption
+from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption,PublicFormat
 from pyndn.security.key_params import EcKeyParams
 from Crypto.IO.PKCS8 import wrap,unwrap
 from pyndn.encoding.der import DerNode
@@ -285,6 +285,58 @@ class Controller:
         except (ConnectionRefusedError, BrokenPipeError) as error:
             return error
 
+
+    def get_crypto_private_key(self,cert: CertificateV2):
+        cert_safe_bag = self.keychain.exportSafeBag(cert, None)
+        crypto_cert_prv_key = cert_safe_bag.getPrivateKeyBag()
+
+        # Decode the PKCS #8 DER to find the algorithm OID.
+        oidString = None
+        try:
+            parsedNode = DerNode.parse(crypto_cert_prv_key.buf())
+            pkcs8Children = parsedNode.getChildren()
+            algorithmIdChildren = DerNode.getSequence(
+                pkcs8Children, 1).getChildren()
+            oidString = "" + algorithmIdChildren[0].toVal()
+        except Exception as ex:
+            raise TpmPrivateKey.Error(
+                "Cannot decode the PKCS #8 private key: " + str(ex))
+
+        if oidString == TpmPrivateKey.EC_ENCRYPTION_OID:
+            keyType = KeyType.EC
+        elif oidString == TpmPrivateKey.RSA_ENCRYPTION_OID:
+            keyType = KeyType.RSA
+        else:
+            raise TpmPrivateKey.Error(
+                "loadPkcs8: Unrecognized private key OID: " + oidString)
+
+        if keyType == KeyType.EC or keyType == KeyType.RSA:
+            _privateKey = serialization.load_der_private_key(
+                crypto_cert_prv_key.toBytes(), password=None, backend=default_backend())
+        else:
+            raise TpmPrivateKey.Error(
+                "loadPkcs8: Unrecognized keyType: " + str(keyType))
+        return _privateKey
+
+    def decode_crypto_private_key(self,privateKey):
+        cert_prv_key_hex = unwrap(privateKey.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption()))[1].hex()[14:78]
+        cert_prv_key = bytes.fromhex(cert_prv_key_hex)
+        logging.info("Private KEY:")
+        logging.info(cert_prv_key_hex)
+        return cert_prv_key
+
+    def get_crypto_public_key(self,cert: CertificateV2):
+        crypto_prv_key = self.get_crypto_private_key(cert)
+        return crypto_prv_key.public_key()
+
+    def decode_crypto_public_key(self,publicKey):
+        cert_pub_key_hex = publicKey.public_bytes(Encoding.DER,PublicFormat.SubjectPublicKeyInfo).hex()[-128:]
+        cert_pub_key = bytes.fromhex(cert_pub_key_hex)
+        logging.info("Public KEY:")
+        logging.info(cert_pub_key_hex)
+        return cert_pub_key
+
+
     async def on_certificate_request_interest(self,face: Face, _prefix: Name, stage_one_result):
         done = threading.Event()
         registerID = -1
@@ -333,39 +385,8 @@ class Controller:
             cert_id = self.keychain.createIdentityV2(device_name, EcKeyParams())
             cert = cert_id.getDefaultKey().getDefaultCertificate()
             cert_bytes = cert.wireEncode().toBytes()
-            cert_safe_bag = self.keychain.exportSafeBag(cert, None)
-            crypto_cert_prv_key = cert_safe_bag.getPrivateKeyBag()
+            cert_prv_key = self.decode_crypto_private_key(self.get_crypto_private_key(cert))
 
-            # Decode the PKCS #8 DER to find the algorithm OID.
-            oidString = None
-            try:
-                parsedNode = DerNode.parse(crypto_cert_prv_key.buf())
-                pkcs8Children = parsedNode.getChildren()
-                algorithmIdChildren = DerNode.getSequence(
-                    pkcs8Children, 1).getChildren()
-                oidString = "" + algorithmIdChildren[0].toVal()
-            except Exception as ex:
-                raise TpmPrivateKey.Error(
-                    "Cannot decode the PKCS #8 private key: " + str(ex))
-
-            if oidString == TpmPrivateKey.EC_ENCRYPTION_OID:
-                keyType = KeyType.EC
-            elif oidString == TpmPrivateKey.RSA_ENCRYPTION_OID:
-                keyType = KeyType.RSA
-            else:
-                raise TpmPrivateKey.Error(
-                    "loadPkcs8: Unrecognized private key OID: " + oidString)
-
-            if keyType == KeyType.EC or keyType == KeyType.RSA:
-                _privateKey = serialization.load_der_private_key(
-                    crypto_cert_prv_key.toBytes(), password=None, backend=default_backend())
-            else:
-                raise TpmPrivateKey.Error(
-                    "loadPkcs8: Unrecognized keyType: " + str(keyType))
-            cert_prv_key_hex = unwrap(_privateKey.private_bytes(Encoding.DER,PrivateFormat.PKCS8,NoEncryption()))[1].hex()[14:78]
-            cert_prv_key = bytes.fromhex(cert_prv_key_hex)
-            logging.info("Private KEY:")
-            logging.info(cert_prv_key)
             # AES
             iv = urandom(16)
             cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC,iv)
