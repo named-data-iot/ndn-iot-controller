@@ -187,6 +187,7 @@ def app_main():
         name = r_json['name']
         can_be_prefix = r_json['can_be_prefix']
         must_be_fresh = r_json['must_be_fresh']
+        signed_interest = r_json['signed_interest']
         param = r_json['application_parameter']
         try:
             interest_lifetime = float(r_json['interest_lifetime']) * 1000.0
@@ -203,6 +204,8 @@ def app_main():
             except ValueError:
                 pass
         interest.appendParametersDigestToName()
+        if signed_interest:
+            controller.keychain.sign(interest, controller.system_anchor.getName())
         st_time = time.time()
         ret = run_until_complete(controller.express_interest(interest))
         ed_time = time.time()
