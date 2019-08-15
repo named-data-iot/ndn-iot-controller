@@ -11,6 +11,8 @@ info["symmetric_key"] = "5469B8C0B62877701CDDE8899203FDDE"
 
 shared_info = pyqrcode.create(json.dumps(info))
 shared_info.png('shared_info.png', scale=5)
+cmd_line_qr = shared_info.terminal(quiet_zone=1)
+print(cmd_line_qr)
 
 
 

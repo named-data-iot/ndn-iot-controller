@@ -58,7 +58,7 @@
         },
         beforeUpload(file){
             console.log(file);
-            if(file.name.endsWith('.png') || file.name.endsWith('.jpg') ){
+            if(file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.JPG') ){
                 return true;
             }else{
                 this.$notify.error({

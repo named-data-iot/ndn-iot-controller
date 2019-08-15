@@ -205,7 +205,10 @@ def app_main():
                 pass
         interest.appendParametersDigestToName()
         if signed_interest:
-            controller.keychain.sign(interest, controller.system_anchor.getName())
+            data_parameter = Data(interest.name)
+            controller.keychain.sign(data_parameter, controller.system_anchor.getName())
+            data_parameter_blob = data_parameter.wireEncode()
+            interest.setApplicationParameters(data_parameter_blob)
         st_time = time.time()
         ret = run_until_complete(controller.express_interest(interest))
         ed_time = time.time()
