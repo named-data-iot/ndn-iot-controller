@@ -37,10 +37,13 @@ def app_main():
         asyncio.set_event_loop(asyncio.new_event_loop())
         return asyncio.get_event_loop().run_until_complete(event)
 
-    @app.route('/')
-    def index():
+    @app.before_first_request
+    def before_run():
         if controller.networking_ready is not True:
             run_until_complete(controller.iot_connectivity_init())
+
+    @app.route('/')
+    def index():
         return render_template('index.html')
 
     @app.route('/system-overview')

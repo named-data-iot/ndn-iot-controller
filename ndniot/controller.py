@@ -123,19 +123,25 @@ class Controller:
     async def iot_connectivity_init(self):
         # Step Three: Configure Face and Route
         # 1. Find/create NFD's UDP Multicast Face, BLE Multicast Face, etc.
-        # 2. Set up NFD's route from IoT system prefix to multicast faces
         face_id = await self.query_face_id(default_udp_multi_uri)
         logging.info("Found UDP multicast face {:d}".format(face_id))
         if face_id:
+             # 2. Set up NFD's route from IoT system prefix to multicast faces
             ret = await self.add_route(self.system_prefix, face_id)
             if ret is True:
-                self.networking_ready = True
-                logging.info("Server finishes the step 3 initialization")
+                logging.info("Successfully add route.")
             else:
                 logging.fatal("Cannot set up the route for IoT prefix")
+            # 3. Set up NFD's multicast strategy for IoT system namespace
+            ret = await self.set_strategy(self.system_prefix, Name("/localhost/nfd/strategy/multicast"))
+            if ret is True:
+                self.networking_ready = True
+                logging.info("Successfully add multicast strategy.")
+                logging.info("Server finishes the step 3 initialization")
+            else:
+                logging.fatal("Cannot set up the strategy for IoT prefix")
         else:
             logging.fatal("Cannot find existing udp multicast face")
-        # 3. Set up NFD's multicast strategy for IoT system namespace
         # for now, there is only one UDP multicast face, so we don't need to care about this
 
     async def express_interest(self, interest):
@@ -545,13 +551,23 @@ class Controller:
     async def remove_route(self, name: str, face_id: int):
         interest = self.make_localhost_command('rib', 'unregister',
                                      name=Name(name), face_id=face_id)
-        return await self.issue_command_interest(interest)
+        ret = await self.issue_command_interest(interest)
 
     ## copied from NDN-CC
     async def set_strategy(self, name: str, strategy: str):
         interest = self.make_localhost_command('strategy-choice', 'set',
-                                     name=Name(name), strategy=Name(strategy))
-        return await self.issue_command_interest(interest)
+                                               name=Name(name), strategy=Name(strategy))
+        ret = await fetch_data_packet(self.face, interest)
+        if isinstance(ret, Data):
+            response = ControlResponseMessage()
+            try:
+                ProtobufTlv.decode(response, ret.content)
+                logging.info("Issue command Interest with result: {:d}".format(response.control_response.st_code))
+                if response.control_response.st_code <= 399:
+                    return True
+            except RuntimeError as exc:
+                logging.fatal('Decode failed %s', exc)
+        return False
 
     ## copied from NDN-CC
     async def unset_strategy(self, name: str):
@@ -565,7 +581,7 @@ class Controller:
             response = ControlResponseMessage()
             try:
                 ProtobufTlv.decode(response, ret.content)
-                logging.info("Issue command Interest with result: {:d}".format(response.st_code))
+                logging.info("Issue command Interest with result: {:d}".format(response.control_response.st_code))
             except RuntimeError as exc:
                 logging.fatal('Decode failed %s', exc)
         return None
