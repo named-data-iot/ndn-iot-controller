@@ -170,7 +170,8 @@ class Controller:
                   'Salt':None,
                   'TrustAnchorDigest':None,
                   'SharedPublicKey':None,
-                  'SharedSymmetricKey':None}
+                  'SharedSymmetricKey':None,
+                  'CertName':None}
         registerID = -1
 
         TLV_GenericNameComponent = 8
@@ -260,7 +261,8 @@ class Controller:
                 nonlocal done
                 _face.removeRegisteredPrefix(registerID)
                 done.set()
-            except:
+            except error as e:
+                logging.error(str(e))
                 logging.error("[SIGN ON]: ERROR")
                 _face.removeRegisteredPrefix(registerID)
                 done.set()
@@ -391,7 +393,7 @@ class Controller:
                 cert = cert_id.getDefaultKey().getDefaultCertificate()
                 cert_bytes = cert.wireEncode().toBytes()
                 cert_prv_key = self.decode_crypto_private_key(self.get_crypto_private_key(cert))
-
+                stage_one_result['CertName'] = cert.getKeyName().__str__()
                 # AES
                 iv = urandom(16)
                 cipher = AES.new(stage_one_result['SharedKey'],AES.MODE_CBC,iv)
@@ -429,7 +431,8 @@ class Controller:
                 nonlocal done
                 _face.removeRegisteredPrefix(registerID)
                 done.set()
-            except:
+            except error as e:
+                logging.error(str(e))
                 logging.error("[CERT REQ]: ERROR")
                 _face.removeRegisteredPrefix(registerID)
                 done.set()
@@ -467,6 +470,10 @@ class Controller:
         ret = await self.on_certificate_request_interest(self.face,Name(self.system_prefix + '/cert'),ret)
         if not ret:
             return {'st_code': 500}
+        new_device = self.device_list.device.add()
+        new_device.device_id = ret["DeviceIdentifier"]
+        new_device.device_info = ret["DeviceCapability"]
+        new_device.device_cert_name = ret["CertName"]
         return {'st_code':200,'device_id': ret['DeviceIdentifier'].decode('utf-8')}
 
 
