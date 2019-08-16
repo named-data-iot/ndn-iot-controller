@@ -13,6 +13,7 @@ from PIL import Image
 from pyzbar.pyzbar import decode
 import json
 from pyndn.util.blob import Blob
+from pyndn.name import Name
 
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
@@ -125,12 +126,37 @@ def app_main():
         # The following code is only for sample use
         return render_template('device-list.html', device_list=device_list)
 
-    @app.route('/exec/remove_device')
+    @app.route('/delete/device',methods=['POST'])
     def remove_device():
         r_json = request.get_json()
-        device_name = r_json["device_name"]
-        ret = "" # run_until_complete(server.invoke_cert(device_name))
-        return render_template('face-list.html', device_list=device_list)
+        device_cert_name = None
+        # delete device information from level db
+        try:
+            count = 0
+            for ss in controller.device_list.device:
+                if ss.device_id == r_json["device_id"]:
+                    device_id_name = ss.device_cert_name # Key name of the certificate
+                    del controller.device_list.device[count]
+                count += 1
+        except:
+            logging.error('Cannot find the deleting device in the leveldb')
+            return jsonify({"st_code": 500})
+        # delete device identity in pib
+        try:
+            controller.keychain.deleteIdentity(Name(device_id_name))
+        except:
+            logging.error('Cannot find the pib-identity of the deleting device')
+            return jsonify({"st_code": 500})
+        # delete service information from leveldb
+        # service Name: system_prefix/%01/<service-id>/ [Device Identifier]
+        # Device Identifier should not start with '/'
+        for service_name in list(controller.real_service_list.keys()):
+            d_id = Name(service_name)[3:].__str__()[1:] #get rid of the beginning '/'; device id shall not start with '/'
+            if d_id == r_json["device_id"]:
+                del controller.real_service_list[service_name]
+        return jsonify({"st_code": 200})
+
+
 
     ### service list
     @app.route('/service-list')

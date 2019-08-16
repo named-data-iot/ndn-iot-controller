@@ -60,7 +60,8 @@
                             if(response.data.st_code === 200){
                                 this.$notify.success({
                                 title: 'SUCCESS',
-                                message: response.data.device_id +' has successfully bootstrapped'
+                                dangerouslyUseHTMLString: true,
+                                message: '<div>' + response.data.device_id +' has successfully bootstrapped' + </div>
                                 });
                             }else{
                                 this.$notify.error({

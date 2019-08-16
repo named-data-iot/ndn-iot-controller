@@ -9,9 +9,9 @@
   <h2>Device List</h2>
   <div id="devicelist">
     <el-table :data="device_list" border stripe empty-text="no device available">
-      <el-table-column prop="deviceId" label="Device ID" min-width="2"></el-table-column>
+      <el-table-column prop="deviceId" label="Device Identifier" min-width="2"></el-table-column>
       <el-table-column prop="deviceInfo" label="Device Info" min-width="2"></el-table-column>
-      <el-table-column prop="deviceCertName" label="Device Cert Name" min-width="2"></el-table-column>
+      <el-table-column prop="deviceCertName" label="Pib Identity Name" min-width="2"></el-table-column>
       <el-table-column label="Operation" min-width="1">
         <template slot-scope="scope">
         <el-button @click="deleteRow(scope.$index)" type="danger" size="small">remove</el-button>
@@ -19,9 +19,6 @@
       </el-table-column>
     </el-table>
   </div>
-  {% if st_code %}
-    <p>{{ st_code }} {{ st_text }}</p>
-  {% endif %}
 </body>
 </html>
 
@@ -39,10 +36,25 @@
      },
      methods:{
         deleteRow(index){
+          let vm = this;
           console.log(this.device_list[index]);
-          axios.post('/exec/remove-device',{device_name:this.device_list[index].device_name},{
+          axios.post('/delete/device',{device_id:this.device_list[index].deviceId},{
                         headers: {'Content-Type': 'application/json'}
-                        }).then(response=>{});
+                        }).then(response=>{
+                          if (response.data.st_code === 200){
+                            this.$notify.success({
+                                title: 'SUCCESS',
+                                message: 'Device deletion succeeded'
+                                });
+                                vm.device_list.splice(index,1)
+                          }else{
+                            this.$notify.error({
+                                  title: 'ERROR',
+                                  message: 'Device deletion failed',
+                               });
+                          }
+
+                        });
         }
      }
   })
