@@ -71,32 +71,38 @@
                        }).then(response=>{
                            ret = response.data;
                            if (ret.response_type === 'Timeout'){
+                               txt =  '<div>Response Time: ' + ret.response_time +'</div>' +
+                                      '<div>Response Type: ' + ret.response_type +'</div>' +
+                                      '<div>Name: ' + ret.name + '</div>';
                                this.$notify({
                                   title: 'Timeout',
-                                  message: 'Response Time:' + ret.response_time +
-                                      ',Response Type:' + ret.response_type +
-                                      ',Name:' + ret.name,
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
                                   type: 'error'
                                });
                            }else if (ret.response_type === 'NetworkNack'){
+                                txt = '<div>Response Time: ' + ret.response_time + '</div>' +
+                                      '<div>Response Type: ' + ret.response_type +'</div>' +
+                                      '<div>Name: ' + ret.name +'</div>' +
+                                      '<div>Reason: ' + ret.reason + '</div>';
                                this.$notify({
                                   title: 'NetworkNack',
-                                  message: 'Response Time:' + ret.response_time +
-                                      ',Response Type:' + ret.response_type +
-                                      ',Name:' + ret.name +
-                                      ',Reason:' + ret.reason,
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
                                   type: 'error'
                                });
                            }else{
+                                txt = '<div>Response Time: ' + ret.response_time + '</div>' +
+                                      '<div>Response Type: ' + ret.response_type + '</div>' +
+                                      '<div>Name: ' + ret.name + '</div>' +
+                                      '<div>Content Type: ' + ret.content_type + '</div>' +
+                                      '<div>Freshness Period: ' + ret.freshness_period + '</div>' +
+                                      '<div>Final Block Id: ' + ret.final_block_id + '</div>' +
+                                      '<div>Signature Type: ' + ret.signature_type + '</div>';
                                this.$notify({
                                   title: 'Success',
-                                  message: 'Response Time:' + ret.response_time +
-                                      ',Response Type:' + ret.response_type +
-                                      ',Name:' + ret.name +
-                                      ',Content Type:' + ret.content_type +
-                                      ',Freshness Period:' + ret.freshness_period +
-                                      ',Final Block Id:' + ret.final_block_id +
-                                      ',Signature Type:' + ret.signature_type,
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
                                   type: 'success'
                                });
                            }

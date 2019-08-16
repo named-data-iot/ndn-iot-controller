@@ -17,7 +17,7 @@
         </div>
         <div>
             <h3>Start bootstrapping</h3>
-            <el-button type="primary" size="mini" round plain @click="startBootstrap()">Bootstrap</el-button>
+            <el-button type="primary" size="mini" round plain @click="startBootstrap()" v-loading="bootstrapping">Bootstrap</el-button>
         </div>
 
         <div>
@@ -46,10 +46,13 @@
     data(){
       return{
         existing_shared_secrets:{{ existing_shared_secrets | tojson}},
+        bootstrapping: false,
       }
      },
      methods:{
         startBootstrap(){
+          let vm = this;
+          vm.bootstrapping = true;
           axios.post('/exec/bootstrapping',{},{
                         headers: {'Content-Type': 'application/json'}
                         }).then(response=>{
@@ -65,6 +68,7 @@
                                 message: 'Bootstrap failed'
                                 });
                             }
+                            vm.bootstrapping = false;
                             })
         },
         beforeUpload(file){
