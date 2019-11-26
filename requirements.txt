@@ -9,3 +9,4 @@ pyzbar>=0.1.8
 ecdsa>=0.13.2
 aiohttp>=3.6.2
 aiohttp-jinja2>=1.2.0
+python-ndn>=0.2b1
