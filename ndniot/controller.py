@@ -4,38 +4,15 @@ import threading
 import plyvel
 import struct
 import time
-from pyndn import Face, Interest, Data, Name, NetworkNack, InterestFilter,KeyLocatorType
-from pyndn.security import KeyChain, Pib
-from pyndn.encoding import ProtobufTlv
-from pyndn.encoding.tlv.tlv_encoder import TlvEncoder
-import pyndn.transport
-from pyndn.transport.unix_transport import UnixTransport
-from pyndn.security.pib.pib_identity import PibIdentity
-from pyndn.security.pib.pib_key import PibKey
-from pyndn.security.v2.certificate_v2 import CertificateV2
-from pyndn.security.key_params import EcKeyParams
-from .asyncndn import fetch_data_packet,\
-    decode_dict, decode_list, decode_name, decode_content_type, decode_nack_reason, connection_test
-from .nfd_face_mgmt_pb2 import ControlCommandMessage, ControlResponseMessage, CreateFaceResponse, \
-    FaceQueryFilterMessage, FaceStatusMessage
-from .tlvtree import TLVTree
 from .ECDH import ECDH
-from .db_storage_pb2 import DeviceList, ServiceList, AccessList, SharedSecrets, ServiceItem
 from hashlib import sha256
 from os import urandom
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 from base64 import b64encode
-from pyndn.util import Blob
-from pyndn.hmac_with_sha256_signature import HmacWithSha256Signature
-from ecdsa import SigningKey, VerifyingKey, NIST192p,NIST256p
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption,PublicFormat
-from pyndn.security.key_params import EcKeyParams
-from Crypto.IO.PKCS8 import wrap,unwrap
-from pyndn.encoding.der import DerNode
-from pyndn.security.security_types import KeyType
-from pyndn.security.tpm.tpm_private_key import TpmPrivateKey
+from Cryptodome.IO.PKCS8 import wrap,unwrap
 
 
 
@@ -154,7 +131,6 @@ class Controller:
             result["freshness_period"] = "{:.3f}s".format(ret.metaInfo.freshnessPeriod / 1000.0)
             if ret.metaInfo.finalBlockId:
                 result["final_block_id"] = ret.metaInfo.finalBlockId.toEscapedString()
-            result["signature_type"] = type(ret.signature).__name__
 
         elif isinstance(ret, NetworkNack):
             result["response_type"] = 'NetworkNack'
