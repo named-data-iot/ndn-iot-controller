@@ -9,12 +9,10 @@ from os import urandom
 from Cryptodome.Cipher import AES
 from base64 import b64encode
 from .db_storage import *
-from .tlvtree import TLVTree
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption,PublicFormat
-from Cryptodome.IO.PKCS8 import wrap,unwrap
-from ndn.encoding import Name, Component, InterestParam, BinaryStr, FormalName, MetaInfo
+from ndn.encoding import Name, Component, InterestParam, BinaryStr, FormalName
 from ndn.app_support.nfd_mgmt import parse_response, make_command, FaceQueryFilter, FaceQueryFilterValue, FaceStatusMsg
 from ndn.app import NDNApp
 from ndn.types import InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError
@@ -23,6 +21,7 @@ from typing import Optional
 from .ndn_security_sign_on import *
 from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
+from .controller_helper import get_prv_key_from_safe_bag
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -203,57 +202,6 @@ class Controller:
         self.boot_state = state
         self.listen_to_cert_request = True
 
-    def get_crypto_private_key(self,cert: CertificateV2):
-        cert_safe_bag = self.keychain.exportSafeBag(cert, None)
-        crypto_cert_prv_key = cert_safe_bag.getPrivateKeyBag()
-
-        # Decode the PKCS #8 DER to find the algorithm OID.
-        oidString = None
-        try:
-            parsedNode = DerNode.parse(crypto_cert_prv_key.buf())
-            pkcs8Children = parsedNode.getChildren()
-            algorithmIdChildren = DerNode.getSequence(
-                pkcs8Children, 1).getChildren()
-            oidString = "" + algorithmIdChildren[0].toVal()
-        except Exception as ex:
-            raise TpmPrivateKey.Error(
-                "Cannot decode the PKCS #8 private key: " + str(ex))
-
-        if oidString == TpmPrivateKey.EC_ENCRYPTION_OID:
-            keyType = KeyType.EC
-        elif oidString == TpmPrivateKey.RSA_ENCRYPTION_OID:
-            keyType = KeyType.RSA
-        else:
-            raise TpmPrivateKey.Error(
-                "loadPkcs8: Unrecognized private key OID: " + oidString)
-
-        if keyType == KeyType.EC or keyType == KeyType.RSA:
-            _privateKey = serialization.load_der_private_key(
-                crypto_cert_prv_key.toBytes(), password=None, backend=default_backend())
-        else:
-            raise TpmPrivateKey.Error(
-                "loadPkcs8: Unrecognized keyType: " + str(keyType))
-        return _privateKey
-
-    def decode_crypto_private_key(self,privateKey):
-        cert_prv_key_hex = unwrap(privateKey.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption()))[1].hex()[14:78]
-        cert_prv_key = bytes.fromhex(cert_prv_key_hex)
-        logging.info("Private KEY:")
-        logging.info(cert_prv_key_hex)
-        return cert_prv_key
-
-    def get_crypto_public_key(self,cert: CertificateV2):
-        crypto_prv_key = self.get_crypto_private_key(cert)
-        return crypto_prv_key.public_key()
-
-    def decode_crypto_public_key(self,publicKey):
-        cert_pub_key_hex = publicKey.public_bytes(Encoding.DER,PublicFormat.SubjectPublicKeyInfo).hex()[-128:]
-        cert_pub_key = bytes.fromhex(cert_pub_key_hex)
-        logging.info("Public KEY:")
-        logging.info(cert_pub_key_hex)
-        return cert_pub_key
-
-
     def process_cert_request(self, name, app_param):
         logging.info("[CERT REQ]: interest received")
         logging.info(name)
@@ -275,11 +223,11 @@ class Controller:
             return
         # anchor signed certificate
         # create identity and key for the device
-        device_name = Name(self.system_prefix + '/' + request.identifier.decode('utf-8'))
+        device_name = self.system_prefix + '/' + request.identifier.decode('utf-8')
         device_key = KeychainSqlite3.new_key(id_name=device_name)
-        cert_bytes = device_key.default_cert()
-        cert = parse_certificate(cert_bytes)
-        private_key = self.decode_crypto_private_key(self.get_crypto_private_key(cert))
+        default_cert = device_key.default_cert()
+        cert = parse_certificate(default_cert)
+        private_key = get_prv_key_from_safe_bag(device_name)
 
         # AES
         iv = urandom(16)
@@ -305,30 +253,12 @@ class Controller:
 
     async def bootstrapping(self):
         self.listen_to_boot_request = True
-        result = {'DeviceIdentifier': None,
-                  'DeviceCapability': None,
-                  'N1PublicKey': None,
-                  'N2PrivateKey': None,
-                  'N2PublicKey': None,
-                  'SharedKey': None,
-                  'Salt': None,
-                  'TrustAnchorDigest': None,
-                  'SharedPublicKey': None,
-                  'SharedSymmetricKey': None,
-                  'DeviceIdentityName': None}
-        #sign on
-        ret = await self.on_sign_on_interest('/ndn/sign-on')
-        if not ret:
-            return {'st_code': 500}
-        #certificate request
-        ret = await self.on_certificate_request_interest(self.face,Name(self.system_prefix + '/cert'),ret)
-        if not ret:
-            return {'st_code': 500}
+        # TODO: wait for bootstrapping process
         new_device = self.device_list.device.add()
-        new_device.device_id = ret["DeviceIdentifier"]
-        new_device.device_info = ret["DeviceCapability"]
-        new_device.device_cert_name = ret["DeviceIdentityName"]
-        return {'st_code':200,'device_id': ret['DeviceIdentifier'].decode('utf-8')}
+        new_device.device_id = self.boot_state["DeviceIdentifier"]
+        new_device.device_info = self.boot_state["DeviceCapability"]
+        new_device.device_cert_name = self.boot_state["DeviceIdentityName"]
+        return {'st_code':200,'device_id': self.boot_state['DeviceIdentifier'].decode('utf-8')}
 
 
     def get_access_status(self, parameter_list):
