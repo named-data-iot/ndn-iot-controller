@@ -27,6 +27,9 @@ def app_main():
     sio = socketio.AsyncServer(async_mode='aiohttp')
     sio.attach(app)
     controller = Controller(sio.emit)
+    controller.system_init()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(controller.iot_connectivity_init())
 
     def render_template(template_name, request, **kwargs):
         return aiohttp_jinja2.render_template(template_name, request, context=kwargs)
@@ -40,11 +43,6 @@ def app_main():
                 if isinstance(v, bytes):
                     it[k] = v.decode()
 
-    # @app.before_first_request
-    # def before_run():
-    #     if controller.networking_ready is not True:
-    #         run_until_complete(controller.iot_connectivity_init())
-
     @routes.get('/')
     async def index(request):
         return render_template('index.html', request)
@@ -52,11 +50,11 @@ def app_main():
     @routes.get('/system-overview')
     async def system_overview(request):
         metainfo = []
-        metainfo.append({"information":"System Prefix","value":controller.system_prefix})
-        metainfo.append({"information":"System Anchor","value":controller.system_anchor.name.toUri()})
-        if controller.device_list.IsInitialized() is True:
+        metainfo.append({"information":"System Prefix","value": controller.system_prefix})
+        metainfo.append({"information":"System Anchor","value": controller.system_anchor})
+        if len(controller.device_list.device) > 0:
             metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
-        if controller.service_list.IsInitialized() is True:
+        if len(controller.service_list.service) > 0:
             metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
         return render_template('system-overview.html', request, metainfo=metainfo)
 

@@ -9,19 +9,16 @@ from os import urandom
 from Cryptodome.Cipher import AES
 from base64 import b64encode
 from .db_storage import *
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption,PublicFormat
 from ndn.encoding import Name, Component, InterestParam, BinaryStr, FormalName
 from ndn.app_support.nfd_mgmt import parse_response, make_command, FaceQueryFilter, FaceQueryFilterValue, FaceStatusMsg
 from ndn.app import NDNApp
 from ndn.types import InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError
-from ndn.security import KeychainSqlite3, Identity
 from typing import Optional
 from .ndn_security_sign_on import *
 from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
-from .controller_helper import get_prv_key_from_safe_bag
+from .controller_helper import *
+from ndn.encoding.name import Name
 
 default_prefix = "/ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -72,7 +69,8 @@ class Controller:
             self.system_prefix = default_prefix
             self.db.put(b'system_prefix', default_prefix.encode())
         # 2. get system root anchor certificate and private key (from keychain)
-        anchor_key = KeychainSqlite3.new_key(id_name=self.system_prefix)
+        anchor_identity = self.app.keychain.touch_identity(self.system_prefix)
+        anchor_key = anchor_identity.default_key()
         self.system_anchor = anchor_key.default_cert()
         logging.info("Server finishes the step 1 initialization")
 
@@ -101,24 +99,25 @@ class Controller:
         # Step Three: Configure Face and Route
         # 1. Find/create NFD's UDP Multicast Face, BLE Multicast Face, etc.
         face_id = await self.query_face_id(default_udp_multi_uri)
-        logging.info("Found UDP multicast face {:d}".format(face_id))
-        if face_id:
-             # 2. Set up NFD's route from IoT system prefix to multicast faces
-            ret = await self.add_route(self.system_prefix, face_id)
-            if ret is True:
-                logging.info("Successfully add route.")
-            else:
-                logging.fatal("Cannot set up the route for IoT prefix")
-            # 3. Set up NFD's multicast strategy for IoT system namespace
-            ret = await self.set_strategy(self.system_prefix, Name("/localhost/nfd/strategy/multicast"))
-            if ret is True:
-                self.networking_ready = True
-                logging.info("Successfully add multicast strategy.")
-                logging.info("Server finishes the step 3 initialization")
-            else:
-                logging.fatal("Cannot set up the strategy for IoT prefix")
-        else:
+        if not face_id:
             logging.fatal("Cannot find existing udp multicast face")
+            return
+        logging.info("Found UDP multicast face:")
+        logging.info(face_id)
+        # 2. Set up NFD's route from IoT system prefix to multicast faces
+        ret = await self.add_route(self.system_prefix, face_id)
+        if ret is True:
+            logging.info("Successfully add route.")
+        else:
+            logging.fatal("Cannot set up the route for IoT prefix")
+        # 3. Set up NFD's multicast strategy for IoT system namespace
+        ret = await self.set_strategy(self.system_prefix, Name("/localhost/nfd/strategy/multicast"))
+        if ret is True:
+            self.networking_ready = True
+            logging.info("Successfully add multicast strategy.")
+            logging.info("Server finishes the step 3 initialization")
+        else:
+            logging.fatal("Cannot set up the strategy for IoT prefix")
 
         @self.app.route('/ndn/sign-on')
         def on_sign_on_interest(self, name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
@@ -133,6 +132,40 @@ class Controller:
             if not self.listen_to_cert_request:
                 return
             self.HandleSignOnSecondInterest(name, app_param)
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x011'), bytearray(b'\x08\x010')])
+        def on_sd_adv_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+            # prefix = /<home-prefix>/<SD=1>/<ADV=0>
+            locator = name[3:-1]
+            fresh_period = struct.unpack("!I", app_param[:4])[0]
+            service_ids = [sid for sid in app_param[4:]]
+            logging.debug("ON ADV: %s %s %s", locator, fresh_period, service_ids)
+            cur_time = self.get_time_now_ms()
+            for sid in service_ids:
+                # /<home-prefix>/<SD=1>/<service>/<locator>
+                sname = [self.system_prefix, bytearray(b'\x08\x011'), sid, locator]
+                sname = Name.normalize(sname)
+                logging.debug("SNAME: %s", sname)
+                self.real_service_list[sname] = cur_time + fresh_period
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x012'), bytearray(b'\x08\x010')])
+        def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+            logging.info("SD : on interest")
+            if app_param is None:
+                logging.error("Malformed Interest")
+                return
+            interested_ids = {sid for sid in app_param}
+            result = b''
+            cur_time = self.get_time_now_ms()
+            for sname, exp_time in self.real_service_list.items():
+                sid = sname[2][2]
+                if sid in interested_ids and exp_time > cur_time:
+                    result += Name.encode(sname)
+                    result += struct.pack("i", exp_time - cur_time)
+
+            self.app.put_data(name, result, freshness_period=3000, identity=self.system_prefix)
+            logging.debug("PutData")
+            logging.debug(name)
 
     def process_sign_on_request(self, name, app_param):
         logging.info("[SIGN ON]: interest received")
@@ -224,10 +257,12 @@ class Controller:
         # anchor signed certificate
         # create identity and key for the device
         device_name = self.system_prefix + '/' + request.identifier.decode('utf-8')
-        device_key = KeychainSqlite3.new_key(id_name=device_name)
-        default_cert = device_key.default_cert()
-        cert = parse_certificate(default_cert)
+        device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
+        default_cert = device_key.default_cert()
+        # TODO resign the certificate using user's key
+        cert = parse_certificate(default_cert)
+        cert = self.app.prepare_data(cert.name, cert.content, identity=self.system_prefix)
 
         # AES
         iv = urandom(16)
@@ -246,13 +281,14 @@ class Controller:
         response = CertResponse()
         response.cipher = ct
         response.iv = iv
-        response.id_cert = cert_bytes
+        response.id_cert = cert
 
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
 
     async def bootstrapping(self):
         self.listen_to_boot_request = True
+
         # TODO: wait for bootstrapping process
         new_device = self.device_list.device.add()
         new_device.device_id = self.boot_state["DeviceIdentifier"]
@@ -274,15 +310,13 @@ class Controller:
         query_filter_msg = query_filter.encode()
         name = Name.from_str("/localhost/nfd/faces/query") + [Component.from_bytes(query_filter_msg)]
         try:
-            _, _, data = await self.app.express_interest(
-                name, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
+            _, _, data = await self.app.express_interest(name, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
         except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
             logging.error(f'Query failed')
             return None
-        msg = FaceStatusMsg.parse(data)
-        if len(msg.face_status) <= 0:
-            return None
-        return msg.face_status[0].face_id
+        ret = parse_response(data)
+        logging.info(ret)
+        return ret['face_id']
 
     async def add_route(self, name: str, face_id: int):
         interest = make_command('rib', 'register', name=name, face_id=face_id)
@@ -340,7 +374,7 @@ class Controller:
         logging.info("Restarting app...")
         while True:
             try:
-                await self.app.main_loop(self.face_event())
+                await self.app.main_loop()
             except KeyboardInterrupt:
                 logging.info('Receiving Ctrl+C, shutdown')
                 break
@@ -354,45 +388,6 @@ class Controller:
     @staticmethod
     def get_time_now_ms():
         return round(time.time() * 1000.0)
-
-    def on_sd_adv_interest(self, _prefix, interest: Interest, _face, _filter_id, interest_filter: InterestFilter):
-        param = interest.applicationParameters.toBytes()
-        # prefix = /<home-prefix>/<SD=1>/<ADV=0>
-        locator = interest.name.getSubName(interest_filter.getPrefix().size())
-        locator = locator[:-1]  # Remove parameter digest
-        fresh_period = struct.unpack("!I", param[:4])[0]
-        service_ids = [sid for sid in param[4:]]
-        logging.debug("ON ADV: %s %s %s", locator, fresh_period, service_ids)
-        cur_time = self.get_time_now_ms()
-        for sid in service_ids:
-            # /<home-prefix>/<SD=1>/<service>/<locator>
-            sname = (Name(self.system_prefix)
-                     .append(Name.Component.fromNumber(1))
-                     .append(Name.Component.fromNumber(sid))
-                     .append(locator))
-            logging.debug("SNAME: %s", sname)
-            self.real_service_list[sname.toUri()] = cur_time + fresh_period
-
-    def on_sd_ctl_interest(self, _prefix, interest: Interest, face: Face, _filter_id, _interest_filter):
-        logging.info("SD : on interest")
-        param = interest.applicationParameters.toBytes()
-        if param is None:
-            logging.error("Malformed Interest")
-            return
-        interested_ids = {sid for sid in param}
-        result = b''
-        cur_time = self.get_time_now_ms()
-        for sname, exp_time in self.real_service_list.items():
-            sid = Name(sname)[2].toNumber()
-            if sid in interested_ids and exp_time > cur_time:
-                result += Name(sname).wireEncode().toBytes()
-                result += struct.pack("i", exp_time - cur_time)
-
-        data = Data(interest.name)
-        data.content = result
-        data.metaInfo.freshnessPeriod = 5000
-        face.putData(data)
-        logging.debug("PutData %s", data.name.toUri())
 
     def on_register_failed(self, prefix):
         logging.fatal("Prefix registration failed: %s", prefix)
