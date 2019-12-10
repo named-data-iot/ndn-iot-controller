@@ -7,9 +7,9 @@ from PIL import Image
 from pyzbar.pyzbar import decode
 import json
 from aiohttp import web
+import socketio
 import aiohttp_jinja2
 import jinja2
-
 
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
@@ -23,7 +23,10 @@ def app_main():
     aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(os.path.join(base_path, 'templates')))
     app.router.add_static(prefix='/static', path=os.path.join(base_path, 'static'))
     routes = web.RouteTableDef()
-    # controller = Controller.start_controller()
+    # Create SocketIO async server for controller
+    sio = socketio.AsyncServer(async_mode='aiohttp')
+    sio.attach(app)
+    controller = Controller(sio.emit)
 
     def render_template(template_name, request, **kwargs):
         return aiohttp_jinja2.render_template(template_name, request, context=kwargs)
