@@ -3,6 +3,7 @@ import time
 import os
 import logging
 from ndniot.controller import Controller
+from ndniot.db_storage import *
 from PIL import Image
 from pyzbar.pyzbar import decode
 import json
@@ -42,28 +43,33 @@ def app_main():
                     it[k] = v.decode()
 
     @routes.get('/')
+    @aiohttp_jinja2.template('index.html')
     async def index(request):
-        return render_template('index.html', request)
+        return
 
     @routes.get('/system-overview')
+    @aiohttp_jinja2.template('system-overview.html')
     async def system_overview(request):
         metainfo = []
         metainfo.append({"information":"System Prefix", "value": controller.system_prefix})
         # metainfo.append({"information":"System Anchor", "value": controller.system_anchor})
         metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
         metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
-        return render_template('system-overview.html', request, metainfo=metainfo)
+        return {'metainfo': metainfo}
 
     ### bootstrapping
     @routes.get('/bootstrapping')
+    @aiohttp_jinja2.template('bootstrapping.html')
     async def bootstrapping(request):
-        load = controller.shared_secret_list.asdict()
-        existing_shared_secrets = load["shared_secrets"] if load else []
-        process_list(existing_shared_secrets)
+        secrets = list()
+        for secret in controller.shared_secret_list.shared_secrets:
+            secrets.append({'deviceIdentifier': str(bytes(secret.device_identifier).decode()),
+                            'publicKey': str(bytes(secret.public_key).decode()),
+                            'symmetricKey': str(bytes(secret.symmetric_key).decode())})
 
         logging.info("bootstapping")
-        logging.info(existing_shared_secrets)
-        return render_template('bootstrapping.html', request, existing_shared_secrets=existing_shared_secrets)
+        logging.info(secrets)
+        return {'existing_shared_secrets': secrets}
 
     ### room
     @routes.get('/room')
@@ -83,39 +89,44 @@ def app_main():
     @routes.post('/add/shared_secrets')
     async def add_shared_secrets(request):
         data = await request.post()
-        up_img = data['file']
+        logging.info(data)
+        up_img = data['file'].file
+        decoded = decode(Image.open(up_img))
+        logging.info(decoded)
         shared_info = json.loads(decode(Image.open(up_img))[0].data)
-        new_shared_secret = controller.shared_secret_list.shared_secrets.add()
-        try:
-            new_shared_secret.device_identifier = shared_info["device_identifier"]
-            new_shared_secret.public_key = shared_info["public_key"]
-            new_shared_secret.symmetric_key = shared_info["symmetric_key"]
-            res = controller.shared_secret_list.asdict()
-            process_list(res['shared_secrets'])
-            res["st_code"] = 200
-            return web.json_response(res)
-        except:
+        if not shared_info["device_identifier"] or not shared_info["public_key"] or not shared_info["symmetric_key"]:
             return web.json_response({"st_code": 500})
+        for secret in controller.shared_secret_list.shared_secrets:
+            if bytes(secret.device_identifier).decode() == shared_info["public_key"]:
+                return web.json_response({"st_code": 500})
+        new_shared_secret = SharedSecretsItem()
+        new_shared_secret.device_identifier = shared_info["device_identifier"].encode()
+        new_shared_secret.public_key = shared_info["public_key"].encode()
+        new_shared_secret.symmetric_key = shared_info["symmetric_key"].encode()
+        controller.shared_secret_list.shared_secrets.append(new_shared_secret)
+
+        secrets = list()
+        for secret in controller.shared_secret_list.shared_secrets:
+            secrets.append({'deviceIdentifier': str(bytes(secret.device_identifier).decode()),
+                            'publicKey': str(bytes(secret.public_key).decode()),
+                            'symmetricKey': str(bytes(secret.symmetric_key).decode())})
+        res = dict()
+        res['sharedsecrets'] = secrets
+        res['st_code'] = 200
+        return web.json_response(res)
 
     ###delete shared_secrets
     @routes.post('/delete/shared_secrets')
     async def delete_shared_secrets(request):
-        r_json = await request.json()
-        try:
-            count = 0
-            for ss in controller.shared_secret_list.shared_secrets:
-                if ss.device_identifier == r_json["deviceIdentifier"] and \
-                        ss.public_key == r_json["publicKey"] and \
-                        ss.symmetric_key == r_json["symmetricKey"]:
-                    del controller.shared_secret_list.shared_secrets[count]
-                count += 1
-                return web.json_response({"st_code": 200})
-        except:
-          return web.json_response({"st_code": 500})
+        data = await request.json()
+        controller.shared_secret_list.shared_secrets = [ss for ss in controller.shared_secret_list.shared_secrets
+                                                        if bytes(ss.public_key).decode() != data['publicKey']]
+        return web.json_response({"st_code": 200})
 
 
     ### device list
     @routes.get('/device-list')
+    @aiohttp_jinja2.template('device-list.html')
     async def device_list(request):
         load =[]
         for device in controller.device_list.device:
@@ -125,8 +136,7 @@ def app_main():
             device_list = []
         else:
             device_list = load["device"]
-        # The following code is only for sample use
-        return render_template('device-list.html', request, device_list=device_list)
+        return {'device_list': device_list}
 
     @routes.post('/delete/device')
     async def remove_device(request):
@@ -162,6 +172,7 @@ def app_main():
 
     ### service list
     @routes.get('/service-list')
+    @aiohttp_jinja2.template('service-list.html')
     async def service_list(request):
         load = []
         for service in controller.service_list.service:
@@ -174,16 +185,17 @@ def app_main():
 
         for item in service_list:
             if 'expTime' in item:
-                print(item)
+                logging.info(item)
                 item['expTime'] = time.ctime(int(item['expTime']) / 1000.0)
 
         # The following code is only for sample use
-        return render_template('service-list.html', request, service_list=service_list)
+        return {'service_list': service_list}
 
     ### service invocation
     @routes.get('/invoke-service', name='invoke-service')
+    @aiohttp_jinja2.template('invoke-service.html')
     async def invoke_service(request):
-        return render_template('invoke-service.html', request)
+        return
 
     @routes.post('/exec/invoke-service')
     async def trigger_invocation(request):
@@ -191,6 +203,7 @@ def app_main():
 
     ### access control
     @routes.get('/access-control', name='access-control')
+    @aiohttp_jinja2.template('access-control.html')
     async def access_control(request):
         load = []
         if not load:
@@ -198,7 +211,7 @@ def app_main():
         else:
             service_prefix_list = load["access"]
         # The following code is only for sample use
-        return render_template('access-control.html', request, service_prefix_list=service_prefix_list)
+        return {'service_prefix_list': service_prefix_list}
 
     @routes.post('/exec/update-access-rights')
     async def update_access_rights(request):
@@ -208,8 +221,9 @@ def app_main():
         return redirect('access-control', request)
 
     @routes.get('/ndn-ping')
+    @aiohttp_jinja2.template('ndn-ping.html')
     async def ndn_ping(request):
-        return render_template('ndn-ping.html', request)
+        return
 
     @routes.post('/exec/ndn-ping')
     async def exec_ndn_ping(request):
@@ -253,7 +267,7 @@ def app_main():
     app.add_routes(routes)
     asyncio.ensure_future(controller.run())
     try:
-        web.run_app(app, port=5000)
+        web.run_app(app, port=6060)
     finally:
         controller.save_db()
 
