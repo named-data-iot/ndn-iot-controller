@@ -102,8 +102,7 @@ class Controller:
         if not face_id:
             logging.fatal("Cannot find existing udp multicast face")
             return
-        logging.info("Found UDP multicast face:")
-        logging.info(face_id)
+        logging.info("Successfully found UDP multicast face: %d", face_id)
         # 2. Set up NFD's route from IoT system prefix to multicast faces
         ret = await self.add_route(self.system_prefix, face_id)
         if ret is True:
@@ -111,7 +110,7 @@ class Controller:
         else:
             logging.fatal("Cannot set up the route for IoT prefix")
         # 3. Set up NFD's multicast strategy for IoT system namespace
-        ret = await self.set_strategy(self.system_prefix, Name("/localhost/nfd/strategy/multicast"))
+        ret = await self.set_strategy(self.system_prefix, "/localhost/nfd/strategy/multicast")
         if ret is True:
             self.networking_ready = True
             logging.info("Successfully add multicast strategy.")
@@ -184,7 +183,6 @@ class Controller:
                   'SharedPublicKey':None,
                   'SharedSymmetricKey':None,
                   'DeviceIdentityName':None}
-        registerID = -1
         request = SignOnRequest.parse(app_param)
 
         if not request.identifier or not request.capabilities or not request.ecdh_n1:
@@ -260,10 +258,10 @@ class Controller:
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert()
-        # TODO resign the certificate using user's key
+        # resign certificate using anchor's key
         cert = parse_certificate(default_cert)
+        new_cert_name = cert.name
         cert = self.app.prepare_data(cert.name, cert.content, identity=self.system_prefix)
-
         # AES
         iv = urandom(16)
         cipher = AES.new(self.boot_state['SharedKey'], AES.MODE_CBC, iv)
@@ -312,11 +310,11 @@ class Controller:
         try:
             _, _, data = await self.app.express_interest(name, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
         except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-            logging.error(f'Query failed')
-            return None
-        ret = parse_response(data)
+             logging.error(f'Query failed')
+             return None
+        ret = FaceStatusMsg.parse(data)
         logging.info(ret)
-        return ret['face_id']
+        return ret.face_status[0].face_id
 
     async def add_route(self, name: str, face_id: int):
         interest = make_command('rib', 'register', name=name, face_id=face_id)
@@ -326,46 +324,42 @@ class Controller:
             logging.error(f'Command failed')
             return False
         ret = parse_response(data)
-        ret['status_code'] = ret['state_code'].decode()
         if ret['status_code'] <= 399:
             return True
         return False
 
     async def remove_route(self, name: str, face_id: int):
-        interest = self.make_command('rib', 'unregister', name=name, face_id=face_id)
+        interest = make_command('rib', 'unregister', name=name, face_id=face_id)
         try:
             _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
         except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
             logging.error(f'Command failed')
             return False
         ret = parse_response(data)
-        ret['status_code'] = ret['state_code'].decode()
         if ret['status_code'] <= 399:
             return True
         return False
 
     async def set_strategy(self, name: str, strategy: str):
-        interest = self.make_command('strategy-choice', 'set', name=name, strategy=strategy)
+        interest = make_command('strategy-choice', 'set', name=name, strategy=strategy)
         try:
             _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
         except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
             logging.error(f'Command failed')
             return False
         ret = parse_response(data)
-        ret['status_code'] = ret['state_code'].decode()
         if ret['status_code'] <= 399:
             return True
         return False
 
     async def unset_strategy(self, name: str):
-        interest = self.make_command('strategy-choice', 'unset', name=name)
+        interest = make_command('strategy-choice', 'unset', name=name)
         try:
             _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
         except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
             logging.error(f'Command failed')
             return False
         ret = parse_response(data)
-        ret['status_code'] = ret['state_code'].decode()
         if ret['status_code'] <= 399:
             return True
         return False
@@ -374,7 +368,7 @@ class Controller:
         logging.info("Restarting app...")
         while True:
             try:
-                await self.app.main_loop()
+                await self.app.main_loop(self.iot_connectivity_init())
             except KeyboardInterrupt:
                 logging.info('Receiving Ctrl+C, shutdown')
                 break
