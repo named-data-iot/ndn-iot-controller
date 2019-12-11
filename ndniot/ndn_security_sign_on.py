@@ -1,4 +1,4 @@
-from ndn.encoding import TlvModel, BytesField, RepeatedField, ModelField, UintField, TypeNumber, NameField
+from ndn.encoding import TlvModel, BytesField, ModelField, TypeNumber
 from ndn.app_support.security_v2 import CertificateV2Value
 
 TLV_SEC_BOOT_ANCHOR_DIGEST = 161
@@ -15,9 +15,9 @@ class SignOnRequest(TlvModel):
     ecdh_n1 = BytesField(TLV_AC_ECDH_PUB_N1)
 
 class SignOnResponse(TlvModel):
-    salt = BytesField(TLV_AC_SALT)
-    ecdh_n2 = BytesField(TLV_AC_ECDH_PUB_N2)
     anchor = ModelField(TypeNumber.DATA, CertificateV2Value)
+    ecdh_n2 = BytesField(TLV_AC_ECDH_PUB_N2)
+    salt = BytesField(TLV_AC_SALT)
 
 class CertRequest(TlvModel):
     identifier = BytesField(TypeNumber.GENERIC_NAME_COMPONENT)

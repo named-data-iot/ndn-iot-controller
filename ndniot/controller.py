@@ -9,18 +9,17 @@ from os import urandom
 from Cryptodome.Cipher import AES
 from base64 import b64encode
 from .db_storage import *
-from ndn.encoding import Name, Component, InterestParam, BinaryStr, FormalName
+from ndn.encoding import Component, InterestParam, BinaryStr, FormalName, Name
 from ndn.app_support.nfd_mgmt import parse_response, make_command, FaceQueryFilter, FaceQueryFilterValue, FaceStatusMsg
 from ndn.app import NDNApp
 from ndn.types import InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError
 from typing import Optional
-from .ndn_security_sign_on import *
 from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
 from .controller_helper import *
-from ndn.encoding.name import Name
+from .ndn_security_sign_on import *
 
-default_prefix = "/ndn-iot"
+default_prefix = "ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
 controller_port = 6363
 
@@ -38,17 +37,19 @@ class Controller:
         self.system_anchor = None
         self.db = None
         self.device_list = DeviceList()
-        self.real_service_list = {}
+        self.service_list = ServiceList()
         self.access_list = AccessList()
         self.shared_secret_list = SharedSecrets()
 
     def save_db(self):
+        logging.debug('Save state to DB')
         if self.db:
             wb = self.db.write_batch()
+            logging.debug(self.shared_secret_list.encode())
             wb.put(b'device_list', self.device_list.encode())
             wb.put(b'service_list', self.service_list.encode())
             wb.put(b'access_list', self.access_list.encode())
-            wb.put(b'shared_secret_list',self.shared_secret_list.encode())
+            wb.put(b'shared_secret_list', self.shared_secret_list.encode())
             wb.write()
             self.db.close()
 
@@ -64,6 +65,7 @@ class Controller:
         self.db = plyvel.DB(db_dir, create_if_missing=True)
         ret = self.db.get(b'system_prefix')
         if ret:
+            logging.info('Found system prefix from db')
             self.system_prefix = ret.decode()
         else:
             self.system_prefix = default_prefix
@@ -71,28 +73,30 @@ class Controller:
         # 2. get system root anchor certificate and private key (from keychain)
         anchor_identity = self.app.keychain.touch_identity(self.system_prefix)
         anchor_key = anchor_identity.default_key()
-        self.system_anchor = anchor_key.default_cert()
+        self.system_anchor = anchor_key.default_cert().data
         logging.info("Server finishes the step 1 initialization")
 
         # Step Two: App Layer Support (from Level DB)
         # 1. DEVICES: get all the certificates for devices from storage
         ret = self.db.get(b'device_list')
         if ret:
-            self.device_list.parse(ret)
+            logging.info('Found device list from db')
+            self.device_list = DeviceList.parse(ret)
         # 2. SERVICES: get service list and corresponding providers
         ret = self.db.get(b'service_list')
         if ret:
-            srv_lst = ServiceList()
-            srv_lst.parse(ret)
-            self.service_list = srv_lst
+            logging.info('Found service list from db')
+            self.service_list = ServiceList.parse(ret)
         # 3. ACCESS CONTROL: get all the encryption/decryption key pairs
         ret = self.db.get(b'access_list')
         if ret:
-            self.access_list.parse(ret)
+            logging.info('Found access list from db')
+            self.access_list = AccessList.parse(ret)
         # 4. SHARED SECRETS: get all shared secrets
         ret = self.db.get(b'shared_secret_list')
         if ret:
-            self.shared_secret_list.parse(ret)
+            logging.info('Found shared secret from db')
+            self.shared_secret_list = SharedSecrets.parse(ret)
         logging.info("Server finishes the step 2 initialization")
 
     async def iot_connectivity_init(self):
@@ -119,20 +123,24 @@ class Controller:
             logging.fatal("Cannot set up the strategy for IoT prefix")
 
         @self.app.route('/ndn/sign-on')
-        def on_sign_on_interest(self, name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+        def on_sign_on_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             # TODO:Verifying the signature
             if not self.listen_to_boot_request:
                 return
             self.process_sign_on_request(name, app_param)
 
+        await asyncio.sleep(0.1)
+
         @self.app.route(self.system_prefix + '/cert')
-        def on_cert_request_interest(self, name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+        def on_cert_request_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             # TODO:Verifying the signature
             if not self.listen_to_cert_request:
                 return
-            self.HandleSignOnSecondInterest(name, app_param)
+            self.process_cert_request(name, app_param)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x011'), bytearray(b'\x08\x010')])
+        await asyncio.sleep(0.1)
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')])
         def on_sd_adv_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             # prefix = /<home-prefix>/<SD=1>/<ADV=0>
             locator = name[3:-1]
@@ -147,7 +155,9 @@ class Controller:
                 logging.debug("SNAME: %s", sname)
                 self.real_service_list[sname] = cur_time + fresh_period
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x012'), bytearray(b'\x08\x010')])
+        await asyncio.sleep(0.1)
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
         def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             logging.info("SD : on interest")
             if app_param is None:
@@ -168,7 +178,6 @@ class Controller:
 
     def process_sign_on_request(self, name, app_param):
         logging.info("[SIGN ON]: interest received")
-        logging.info(name)
         if not app_param:
             logging.error("[SIGN ON]: interest has no parameter")
             return
@@ -188,31 +197,28 @@ class Controller:
         if not request.identifier or not request.capabilities or not request.ecdh_n1:
             logging.error("[SIGN ON]: lack parameters in application parameters")
             return
-        state['DeviceIdentifier'] = request.identifier
-        state['DeviceCapability'] = request.capabilities
-        state['N1PublicKey'] = request.ecdh_n1
+        state['DeviceIdentifier'] = bytes(request.identifier)
+        state['DeviceCapability'] = bytes(request.capabilities)
+        state['N1PublicKey'] = bytes(request.ecdh_n1)
+        logging.info(state)
 
-        found = False
-        for ss in self.shared_secret_list.sharedsecrets:
-            identifier_str = state["DeviceIdentifier"].decode('utf-8')
-            if ss.device_identifier == identifier_str:
-                state['SharedPublicKey'] = bytes.fromhex(ss.public_key)
-                state['SharedSymmetricKey'] = bytes.fromhex(ss.symmetric_key)
-                found = True
+        shared_secret = None
+        for ss in self.shared_secret_list.shared_secrets:
+            if bytes(ss.device_identifier) == bytes(request.identifier):
+                shared_secret = ss
                 break
-        if not found:
-            logging.error("[SIGN ON]: no preshared information about the device")
+        if not shared_secret:
+            logging.error("[SIGN ON]: no pre-shared information about the device")
             return
+
+        state['SharedPublicKey'] = bytes.fromhex(bytes(shared_secret.public_key).decode())
+        state['SharedSymmetricKey'] = bytes.fromhex(bytes(shared_secret.symmetric_key).decode())
 
         # TODO: check whether the device has already bootstrapped
         # TODO: Verify the signature:pre_installed_ecc_key
-        shared_public_key = state['SharedPublicKey']
-
-        trust_anchor_bytes = self.system_anchor
         logging.info(self.system_anchor)
-        logging.info(trust_anchor_bytes)
         m = sha256()
-        m.update(trust_anchor_bytes)
+        m.update(self.system_anchor)
         state['TrustAnchorDigest'] = m.digest()
         # ECDH
         ecdh = ECDH()
@@ -226,7 +232,8 @@ class Controller:
         response = SignOnResponse()
         response.salt = state['Salt']
         response.ecdh_n2 = state['N2PublicKey']
-        response.anchor = self.system_anchor
+        cert_value = parse_certificate(self.system_anchor)
+        response.anchor = cert_value
 
         signer = HmacSha256Signer('pre-shared', state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
@@ -261,6 +268,7 @@ class Controller:
         # resign certificate using anchor's key
         cert = parse_certificate(default_cert)
         new_cert_name = cert.name
+        # TODO: change the certificate name to new name
         cert = self.app.prepare_data(cert.name, cert.content, identity=self.system_prefix)
         # AES
         iv = urandom(16)
@@ -286,13 +294,13 @@ class Controller:
 
     async def bootstrapping(self):
         self.listen_to_boot_request = True
-
-        # TODO: wait for bootstrapping process
-        new_device = self.device_list.device.add()
-        new_device.device_id = self.boot_state["DeviceIdentifier"]
-        new_device.device_info = self.boot_state["DeviceCapability"]
-        new_device.device_cert_name = self.boot_state["DeviceIdentityName"]
-        return {'st_code':200,'device_id': self.boot_state['DeviceIdentifier'].decode('utf-8')}
+        #
+        # # TODO: wait for bootstrapping process
+        # new_device = self.device_list.device.add()
+        # new_device.device_id = self.boot_state["DeviceIdentifier"]
+        # new_device.device_info = self.boot_state["DeviceCapability"]
+        # new_device.device_cert_name = self.boot_state["DeviceIdentityName"]
+        # return {'st_code':200,'device_id': self.boot_state['DeviceIdentifier'].decode('utf-8')}
 
 
     def get_access_status(self, parameter_list):
