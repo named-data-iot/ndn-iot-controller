@@ -28,8 +28,6 @@ def app_main():
     sio.attach(app)
     controller = Controller(sio.emit)
     controller.system_init()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(controller.iot_connectivity_init())
 
     def render_template(template_name, request, **kwargs):
         return aiohttp_jinja2.render_template(template_name, request, context=kwargs)
@@ -50,12 +48,10 @@ def app_main():
     @routes.get('/system-overview')
     async def system_overview(request):
         metainfo = []
-        metainfo.append({"information":"System Prefix","value": controller.system_prefix})
-        metainfo.append({"information":"System Anchor","value": controller.system_anchor})
-        if len(controller.device_list.device) > 0:
-            metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
-        if len(controller.service_list.service) > 0:
-            metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
+        metainfo.append({"information":"System Prefix", "value": controller.system_prefix})
+        # metainfo.append({"information":"System Anchor", "value": controller.system_anchor})
+        metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
+        metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
         return render_template('system-overview.html', request, metainfo=metainfo)
 
     ### bootstrapping
@@ -121,7 +117,10 @@ def app_main():
     ### device list
     @routes.get('/device-list')
     async def device_list(request):
-        load = json.loads(json_format.MessageToJson(controller.device_list))
+        load =[]
+        for device in controller.device_list.device:
+            load.append({'deviceId': str(device.device_id), 'deviceInfo': str(device.device_info),
+                         'deviceCertName': str(device.device_cert_name)})
         if not load:
             device_list = []
         else:
@@ -164,7 +163,10 @@ def app_main():
     ### service list
     @routes.get('/service-list')
     async def service_list(request):
-        load = json.loads(json_format.MessageToJson(controller.service_list))
+        load = []
+        for service in controller.service_list.service:
+            load.append({'serviceId': str(service.service_id), 'serviceName': str(service.service_name),
+                         'expTime': str(service.exp_time)})
         if not load:
             service_list = []
         else:
@@ -190,7 +192,7 @@ def app_main():
     ### access control
     @routes.get('/access-control', name='access-control')
     async def access_control(request):
-        load = json.loads(json_format.MessageToJson(controller.access_list))
+        load = []
         if not load:
             service_prefix_list = []
         else:
@@ -251,10 +253,9 @@ def app_main():
     app.add_routes(routes)
     asyncio.ensure_future(controller.run())
     try:
-        web.run_app(app)
+        web.run_app(app, port=5000)
     finally:
         controller.save_db()
-
 
 if __name__ == '__main__':
     app_main()

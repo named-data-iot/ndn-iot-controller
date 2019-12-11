@@ -11,7 +11,7 @@
     <el-table :data="device_list" border stripe empty-text="no device available">
       <el-table-column prop="deviceId" label="Device Identifier" min-width="2"></el-table-column>
       <el-table-column prop="deviceInfo" label="Device Info" min-width="2"></el-table-column>
-      <el-table-column prop="deviceCertName" label="Pib Identity Name" min-width="2"></el-table-column>
+      <el-table-column prop="deviceCertName" label="Device Cert Name" min-width="2"></el-table-column>
       <el-table-column label="Operation" min-width="1">
         <template slot-scope="scope">
         <el-button @click="deleteRow(scope.$index)" type="danger" size="small">remove</el-button>
