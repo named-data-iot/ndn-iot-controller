@@ -1,14 +1,12 @@
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, padding
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import load_pem_private_key,load_pem_public_key
-from ecdsa import SigningKey, VerifyingKey, NIST192p,NIST256p
+from ecdsa import SigningKey, VerifyingKey, NIST256p
 import logging
 
-
 class ECDH:
-
     def __init__(self):
         #default curve is secp256r1
         self.ecc_curve = NIST256p

@@ -1,5 +1,4 @@
-from ndn.encoding import TlvModel, BytesField, ModelField, TypeNumber
-from ndn.app_support.security_v2 import CertificateV2Value
+from ndn.encoding import TlvModel, BytesField, TypeNumber
 
 TLV_SEC_BOOT_ANCHOR_DIGEST = 161
 TLV_SEC_BOOT_CAPABILITIES = 160

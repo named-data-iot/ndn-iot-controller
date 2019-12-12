@@ -16,8 +16,19 @@ We thank Xinyu Ma, Zhaoning Kong, and Zhiyi Zhang for their contribution to NDN-
 
 ## Dependencies
 
-- Python 3.6
-- NodeJS (optional)
+#### Python 3.6
+
+#### zbar
+If you are using MacOS:
+```bash
+brew install zbar
+```
+
+#### leveldb
+If you are using MacOS:
+```bash
+brew install leveldb
+```
 
 ## Setup Development Environment
 
@@ -27,25 +38,9 @@ python3 -m venv ./venv
 ./venv/bin/python -m pip install -r requirements.txt
 ```
 
-Electron:
-```bash
-npm install
-```
-
 ## Execute
-
-Electron:
-```bash
-npm start
-```
 
 Python server:
 ```bash
 ./venv/bin/python app.py
-```
-
-LevelDB, QRCode
-```bash
-brew install zbar
-brew install leveldb
 ```
