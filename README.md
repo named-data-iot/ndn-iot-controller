@@ -7,24 +7,21 @@ The controller runs on any platform that supports Python and Web service.
 The controller is designed to control NDN IoT system in terms of
 * GUI System overview.
 * GUI Device Bootstrapping. This will add new devices into the system.
-* GUI Trust Management. This includes credential issuance, revocation, and renew.
-* GUI Access Control. This includes access rights management among users, devices, and services.
-* GUI Service Management and service invocation.
-
-This project was greatly inspired by the NDN-CC (https://github.com/zjkmxy/ndn-cc) project.
-We thank Xinyu Ma, Zhaoning Kong, and Zhiyi Zhang for their contribution to NDN-CC project.
+* GUI Trust Management. This includes credential issuance, revocation, and renew. (not finished)
+* GUI Access Control. This includes access rights management among users, devices, and services. (not finished)
+* GUI Service Management and service invocation. (not finished)
 
 ## Dependencies
 
-#### Python 3.6
+#### 1. >Python 3.6
 
-#### zbar
+#### 2. zbar
 If you are using MacOS:
 ```bash
 brew install zbar
 ```
 
-#### leveldb
+#### 3. leveldb
 If you are using MacOS:
 ```bash
 brew install leveldb
