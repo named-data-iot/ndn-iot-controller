@@ -7,6 +7,7 @@ from .ECDH import ECDH
 from hashlib import sha256
 from os import urandom
 from Cryptodome.Cipher import AES
+from Cryptodome.Util.Padding import pad
 from base64 import b64encode
 from .db_storage import *
 from ndn.encoding import Component, InterestParam, BinaryStr, FormalName, Name
@@ -232,8 +233,10 @@ class Controller:
         response = SignOnResponse()
         response.salt = state['Salt']
         response.ecdh_n2 = state['N2PublicKey']
-        cert_value = parse_certificate(self.system_anchor)
-        response.anchor = cert_value
+        cert_bytes = parse_and_check_tl(self.system_anchor, TypeNumber.DATA)
+        response.anchor = cert_bytes
+
+        logging.info(response.encode())
 
         signer = HmacSha256Signer('pre-shared', state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
@@ -249,31 +252,32 @@ class Controller:
         request = CertRequest.parse(app_param)
         if not request.identifier or not request.ecdh_n2 or not request.anchor_digest or not request.ecdh_n1:
             raise KeyError("[CERT REQ]: lacking parameters in application parameters")
-        logging.info(request.identifier)
-        logging.info(request.ecdh_n2)
-        logging.info(request.anchor_digest)
-        logging.info(request.ecdh_n1)
-        if request.identifier != self.boot_state['DeviceIdentifier'] or \
-                request.ecdh_n2 != self.boot_state['N2PublicKey'] or \
-                request.anchor_digest != self.boot_state['TrustAnchorDigest'] or \
-                request.ecdh_n1 != self.boot_state['N1PublicKey']:
+        logging.info(bytes(request.identifier))
+        logging.info(bytes(request.ecdh_n2))
+        logging.info(bytes(request.anchor_digest))
+        logging.info(bytes(request.ecdh_n1))
+        if bytes(request.identifier) != self.boot_state['DeviceIdentifier'] or \
+                bytes(request.ecdh_n2) != self.boot_state['N2PublicKey'] or \
+                bytes(request.anchor_digest) != self.boot_state['TrustAnchorDigest'] or \
+                bytes(request.ecdh_n1) != self.boot_state['N1PublicKey']:
             logging.error("[CERT REQ]: unauthenticated request")
             return
         # anchor signed certificate
         # create identity and key for the device
-        device_name = self.system_prefix + '/' + request.identifier.decode('utf-8')
+        device_name = self.system_prefix + '/' + bytes(request.identifier).decode()
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
-        default_cert = device_key.default_cert()
+        default_cert = device_key.default_cert().data
         # resign certificate using anchor's key
         cert = parse_certificate(default_cert)
-        new_cert_name = cert.name
-        # TODO: change the certificate name to new name
-        cert = self.app.prepare_data(cert.name, cert.content, identity=self.system_prefix)
+        new_cert_name = cert.name[:-2]
+        new_cert_name.append('home')
+        new_cert_name.append('001')
+        cert = self.app.prepare_data(new_cert_name, cert.content, identity=self.system_prefix)
         # AES
         iv = urandom(16)
         cipher = AES.new(self.boot_state['SharedKey'], AES.MODE_CBC, iv)
-        ct_bytes = cipher.encrypt(private_key)
+        ct_bytes = cipher.encrypt(pad(private_key, AES.block_size))
         logging.info('Symmetic Key')
         logging.info(self.boot_state['SharedKey'])
         # AES IV
@@ -287,7 +291,8 @@ class Controller:
         response = CertResponse()
         response.cipher = ct
         response.iv = iv
-        response.id_cert = cert
+        cert_bytes = parse_and_check_tl(cert, TypeNumber.DATA)
+        response.id_cert = cert_bytes
 
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
