@@ -15,7 +15,7 @@ class SignOnRequest(TlvModel):
     ecdh_n1 = BytesField(TLV_AC_ECDH_PUB_N1)
 
 class SignOnResponse(TlvModel):
-    anchor = ModelField(TypeNumber.DATA, CertificateV2Value)
+    anchor = BytesField(TypeNumber.DATA)
     ecdh_n2 = BytesField(TLV_AC_ECDH_PUB_N2)
     salt = BytesField(TLV_AC_SALT)
 
@@ -26,6 +26,6 @@ class CertRequest(TlvModel):
     ecdh_n1 = BytesField(TLV_AC_ECDH_PUB_N1)
 
 class CertResponse(TlvModel):
-    cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
+    id_cert = BytesField(TypeNumber.DATA)
     iv = BytesField(TLV_AC_AES_IV)
-    id_cert = ModelField(TypeNumber.DATA, CertificateV2Value)
+    cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
