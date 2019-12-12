@@ -4,11 +4,11 @@ from ndn.encoding import TlvModel, BytesField, RepeatedField, ModelField, UintFi
 class DeviceItem(TlvModel):
     device_id = BytesField(1)
     device_info = BytesField(2)
-    device_cert_name = BytesField(3)
+    device_identity_name = BytesField(3)
 
 
 class DeviceList(TlvModel):
-    device = RepeatedField(ModelField(1, DeviceItem))
+    devices = RepeatedField(ModelField(1, DeviceItem))
 
 
 class ServiceItem(TlvModel):
@@ -18,7 +18,7 @@ class ServiceItem(TlvModel):
 
 
 class ServiceList(TlvModel):
-    service = RepeatedField(ModelField(1, ServiceItem))
+    services = RepeatedField(ModelField(1, ServiceItem))
 
 
 class AccessType:
@@ -35,7 +35,7 @@ class AccessItem(TlvModel):
 
 
 class AccessList(TlvModel):
-    access = RepeatedField(ModelField(1, AccessItem))
+    access_items = RepeatedField(ModelField(1, AccessItem))
 
 
 class SharedSecretsItem(TlvModel):

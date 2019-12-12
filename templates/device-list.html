@@ -9,9 +9,9 @@
   <h2>Device List</h2>
   <div id="devicelist">
     <el-table :data="device_list" border stripe empty-text="no device available">
+      <el-table-column prop="deviceIdentityName" label="Device Identity Name" min-width="2"></el-table-column>
       <el-table-column prop="deviceId" label="Device Identifier" min-width="2"></el-table-column>
       <el-table-column prop="deviceInfo" label="Device Info" min-width="2"></el-table-column>
-      <el-table-column prop="deviceCertName" label="Device Cert Name" min-width="2"></el-table-column>
       <el-table-column label="Operation" min-width="1">
         <template slot-scope="scope">
         <el-button @click="deleteRow(scope.$index)" type="danger" size="small">remove</el-button>
@@ -38,7 +38,7 @@
         deleteRow(index){
           let vm = this;
           console.log(this.device_list[index]);
-          axios.post('/delete/device',{device_id:this.device_list[index].deviceId},{
+          axios.post('/delete/device',{deviceIdentityName:this.device_list[index].deviceIdentityName},{
                         headers: {'Content-Type': 'application/json'}
                         }).then(response=>{
                           if (response.data.st_code === 200){

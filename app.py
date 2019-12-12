@@ -53,8 +53,8 @@ def app_main():
         metainfo = []
         metainfo.append({"information":"System Prefix", "value": controller.system_prefix})
         # metainfo.append({"information":"System Anchor", "value": controller.system_anchor})
-        metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.device))})
-        metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.service))})
+        metainfo.append({"information": "Available Devices", "value": str(len(controller.device_list.devices))})
+        metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.services))})
         return {'metainfo': metainfo}
 
     ### bootstrapping
@@ -71,12 +71,6 @@ def app_main():
         logging.info(secrets)
         return {'existing_shared_secrets': secrets}
 
-    ### room
-    @routes.get('/room')
-    async def room(request):
-        room_list = []
-        return render_template("room.html", request, room_list= room_list)
-
     ### trigger bootstrapping process
     @routes.post('/exec/bootstrapping')
     async def bootstrap_device(request):
@@ -84,6 +78,12 @@ def app_main():
         logging.info("Bootstrap result:")
         logging.info(ret)
         return web.json_response(ret)
+
+    ### room
+    @routes.get('/room')
+    async def room(request):
+        room_list = []
+        return render_template("room.html", request, room_list= room_list)
 
     ###add shared_secrets
     @routes.post('/add/shared_secrets')
@@ -128,68 +128,33 @@ def app_main():
     @routes.get('/device-list')
     @aiohttp_jinja2.template('device-list.html')
     async def device_list(request):
-        load =[]
-        for device in controller.device_list.device:
-            load.append({'deviceId': str(device.device_id), 'deviceInfo': str(device.device_info),
-                         'deviceCertName': str(device.device_cert_name)})
-        if not load:
-            device_list = []
-        else:
-            device_list = load["device"]
-        return {'device_list': device_list}
+        ret =[]
+        for device in controller.device_list.devices:
+            ret.append({'deviceId': bytes(device.device_id).decode(),
+                        'deviceInfo': bytes(device.device_info).decode(),
+                        'deviceIdentityName': bytes(device.device_identity_name).decode()})
+        return {'device_list': ret}
 
     @routes.post('/delete/device')
     async def remove_device(request):
-        r_json = await request.json()
-        device_cert_name = None
-        # delete device information from level db
-        try:
-            count = 0
-            for ss in controller.device_list.device:
-                if ss.device_id == r_json["device_id"]:
-                    device_id_name = ss.device_cert_name # Key name of the certificate
-                    del controller.device_list.device[count]
-                count += 1
-        except:
-            logging.error('Cannot find the deleting device in the leveldb')
-            return web.json_response({"st_code": 500})
-        # delete device identity in pib
-        try:
-            controller.keychain.deleteIdentity(Name(device_id_name))
-        except:
-            logging.error('Cannot find the pib-identity of the deleting device')
-            return web.json_response({"st_code": 500})
-        # delete service information from leveldb
-        # service Name: system_prefix/%01/<service-id>/ [Device Identifier]
-        # Device Identifier should not start with '/'
-        for service_name in list(controller.real_service_list.keys()):
-            d_id = Name(service_name)[3:].__str__()[1:] #get rid of the beginning '/'; device id shall not start with '/'
-            if d_id == r_json["device_id"]:
-                del controller.real_service_list[service_name]
+        data = await request.json()
+        # delete from keychain
+        controller.app.keychain.del_identity(data['deviceIdentityName'])
+        # delete from database
+        controller.device_list.devices = [device for device in controller.device_list.devices
+                                          if bytes(device.device_identity_name).decode() != data['deviceIdentityName']]
+        # TODO: delete service information of this device
         return web.json_response({"st_code": 200})
-
-
 
     ### service list
     @routes.get('/service-list')
     @aiohttp_jinja2.template('service-list.html')
     async def service_list(request):
-        load = []
-        for service in controller.service_list.service:
-            load.append({'serviceId': str(service.service_id), 'serviceName': str(service.service_name),
+        list = []
+        for service in controller.service_list.services:
+            list.append({'serviceId': str(service.service_id), 'serviceName': str(service.service_name),
                          'expTime': str(service.exp_time)})
-        if not load:
-            service_list = []
-        else:
-            service_list = load["service"]
-
-        for item in service_list:
-            if 'expTime' in item:
-                logging.info(item)
-                item['expTime'] = time.ctime(int(item['expTime']) / 1000.0)
-
-        # The following code is only for sample use
-        return {'service_list': service_list}
+        return {'service_list': list}
 
     ### service invocation
     @routes.get('/invoke-service', name='invoke-service')

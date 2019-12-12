@@ -32,6 +32,7 @@ class Controller:
         self.listen_to_boot_request = False
         self.listen_to_cert_request = False
         self.boot_state = None
+        self.boot_event = None
 
         self.app = NDNApp()
         self.system_prefix = None
@@ -182,26 +183,15 @@ class Controller:
         if not app_param:
             logging.error("[SIGN ON]: interest has no parameter")
             return
-        state = {'DeviceIdentifier': None,
-                  'DeviceCapability': None,
-                  'N1PublicKey': None,
-                  'N2PrivateKey':None,
-                  'N2PublicKey':None,
-                  'SharedKey':None,
-                  'Salt':None,
-                  'TrustAnchorDigest':None,
-                  'SharedPublicKey':None,
-                  'SharedSymmetricKey':None,
-                  'DeviceIdentityName':None}
         request = SignOnRequest.parse(app_param)
 
         if not request.identifier or not request.capabilities or not request.ecdh_n1:
             logging.error("[SIGN ON]: lack parameters in application parameters")
             return
-        state['DeviceIdentifier'] = bytes(request.identifier)
-        state['DeviceCapability'] = bytes(request.capabilities)
-        state['N1PublicKey'] = bytes(request.ecdh_n1)
-        logging.info(state)
+        self.boot_state['DeviceIdentifier'] = bytes(request.identifier)
+        self.boot_state['DeviceCapability'] = bytes(request.capabilities)
+        self.boot_state['N1PublicKey'] = bytes(request.ecdh_n1)
+        logging.info(self.boot_state)
 
         shared_secret = None
         for ss in self.shared_secret_list.shared_secrets:
@@ -212,35 +202,34 @@ class Controller:
             logging.error("[SIGN ON]: no pre-shared information about the device")
             return
 
-        state['SharedPublicKey'] = bytes.fromhex(bytes(shared_secret.public_key).decode())
-        state['SharedSymmetricKey'] = bytes.fromhex(bytes(shared_secret.symmetric_key).decode())
+        self.boot_state['SharedPublicKey'] = bytes.fromhex(bytes(shared_secret.public_key).decode())
+        self.boot_state['SharedSymmetricKey'] = bytes.fromhex(bytes(shared_secret.symmetric_key).decode())
 
         # TODO: check whether the device has already bootstrapped
         # TODO: Verify the signature:pre_installed_ecc_key
         logging.info(self.system_anchor)
         m = sha256()
         m.update(self.system_anchor)
-        state['TrustAnchorDigest'] = m.digest()
+        self.boot_state['TrustAnchorDigest'] = m.digest()
         # ECDH
         ecdh = ECDH()
-        state['N2PrivateKey'] = ecdh.prv_key.to_string()
-        state['N2PublicKey'] = ecdh.pub_key.to_string()
+        self.boot_state['N2PrivateKey'] = ecdh.prv_key.to_string()
+        self.boot_state['N2PublicKey'] = ecdh.pub_key.to_string()
         # random 16 bytes for salt
-        state['Salt'] = urandom(16)
-        ecdh.encrypt(state['N1PublicKey'], state['Salt'])
-        state['SharedKey'] = ecdh.derived_key
+        self.boot_state['Salt'] = urandom(16)
+        ecdh.encrypt(self.boot_state['N1PublicKey'], self.boot_state['Salt'])
+        self.boot_state['SharedKey'] = ecdh.derived_key
 
         response = SignOnResponse()
-        response.salt = state['Salt']
-        response.ecdh_n2 = state['N2PublicKey']
+        response.salt = self.boot_state['Salt']
+        response.ecdh_n2 = self.boot_state['N2PublicKey']
         cert_bytes = parse_and_check_tl(self.system_anchor, TypeNumber.DATA)
         response.anchor = cert_bytes
 
         logging.info(response.encode())
 
-        signer = HmacSha256Signer('pre-shared', state['SharedSymmetricKey'])
+        signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
-        self.boot_state = state
         self.listen_to_cert_request = True
 
     def process_cert_request(self, name, app_param):
@@ -264,7 +253,7 @@ class Controller:
             return
         # anchor signed certificate
         # create identity and key for the device
-        device_name = self.system_prefix + '/' + bytes(request.identifier).decode()
+        device_name = '/' + self.system_prefix + '/' + bytes(request.identifier).decode()
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert().data
@@ -296,16 +285,40 @@ class Controller:
 
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
+        self.boot_state["DeviceIdentityName"] = device_name.encode()
+        self.boot_state['Success'] = True
+        self.boot_event.set()
 
     async def bootstrapping(self):
+        self.boot_state = {'DeviceIdentifier': None,
+                           'DeviceCapability': None,
+                           'N1PublicKey': None,
+                           'N2PrivateKey': None,
+                           'N2PublicKey': None,
+                           'SharedKey': None,
+                           'Salt': None,
+                           'TrustAnchorDigest': None,
+                           'SharedPublicKey': None,
+                           'SharedSymmetricKey': None,
+                           'DeviceIdentityName': None,
+                           'Success': False}
+        self.boot_event = asyncio.Event()
         self.listen_to_boot_request = True
-        #
-        # # TODO: wait for bootstrapping process
-        # new_device = self.device_list.device.add()
-        # new_device.device_id = self.boot_state["DeviceIdentifier"]
-        # new_device.device_info = self.boot_state["DeviceCapability"]
-        # new_device.device_cert_name = self.boot_state["DeviceIdentityName"]
-        # return {'st_code':200,'device_id': self.boot_state['DeviceIdentifier'].decode('utf-8')}
+        try:
+            await asyncio.wait_for(self.boot_event.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            self.boot_event.set()
+        self.boot_event = None
+        self.listen_to_boot_request = False
+        self.listen_to_cert_request = False
+        if self.boot_state['Success']:
+            new_device = DeviceItem()
+            new_device.device_id = self.boot_state["DeviceIdentifier"]
+            new_device.device_info = self.boot_state["DeviceCapability"]
+            new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
+            self.device_list.devices.append(new_device)
+            return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName'].decode()}
+        return {'st_code': 500}
 
 
     def get_access_status(self, parameter_list):
@@ -418,13 +431,13 @@ class Controller:
             item.service_id = Name(sname)[2].toNumber()
             item.service_name = sname
             item.exp_time = exp_time
-            ret.service.append(item)
+            ret.services.append(item)
         return ret
 
     def set_service_list(self, srv_lst):
         self.real_service_list = {}
         cur_time = self.get_time_now_ms()
-        for item in srv_lst.service:
+        for item in srv_lst.services:
             if item.exp_time > cur_time:
                 self.real_service_list[item.service_name] = item.exp_time
 
