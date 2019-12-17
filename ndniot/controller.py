@@ -199,17 +199,34 @@ class Controller:
             TODO:Verifying the signature
             """
             locator = name[3:-1]
-            logging.debug("Adv Interest sender locator: ", locator)
+            logging.debug("Adv Interest sender locator: ")
+            logging.debug(locator)
             fresh_period = struct.unpack("!I", app_param[:4])[0]
-            logging.debug("Adv Interest freshness: ", fresh_period)
+            logging.debug("Adv Interest freshness: ")
+            logging.debug(fresh_period)
             service_ids = [sid for sid in app_param[4:]]
+            logging.debug('service ids')
+            logging.debug(service_ids)
             cur_time = self.get_time_now_ms()
             for sid in service_ids:
-                # /<home-prefix>/<SD=1>/<service>/<locator>
-                sname = [self.system_prefix, bytearray(b'\x08\x011'), bytearray(sid), locator]
-                sname = Name.normalize(sname)
-                logging.debug("SNAME: %s", sname)
-                self.real_service_list[sname] = cur_time + fresh_period
+                # Name format: /<home-prefix>/<service>/<locator>
+                sname = [self.system_prefix, b'\x08\x01' + bytes([sid])] + locator
+                sname = Name.to_str(sname)
+                logging.debug('Service Name: ')
+                logging.debug(sname)
+
+                already_added = False
+                for item in self.service_list.services:
+                    if Name.to_str(item.service_name) == sname:
+                        already_added = True
+                        item.exp_time = cur_time + fresh_period
+                if not already_added:
+                    service = ServiceItem()
+                    service.service_name = sname
+                    service.exp_time = cur_time + fresh_period
+                    service.service_id = sid
+                    logging.debug('Add new service into the service list')
+                    self.service_list.services.append(service)
 
         await asyncio.sleep(0.1)
 
@@ -359,7 +376,7 @@ class Controller:
 
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
-        self.boot_state["DeviceIdentityName"] = device_name.encode()
+        self.boot_state["DeviceIdentityName"] = device_name
         self.boot_state['Success'] = True
         self.boot_event.set()
 
@@ -391,9 +408,8 @@ class Controller:
             new_device.device_info = self.boot_state["DeviceCapability"]
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
             self.device_list.devices.append(new_device)
-            return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName'].decode()}
+            return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName']}
         return {'st_code': 500}
-
 
     def get_access_status(self, parameter_list):
         pass
@@ -497,22 +513,3 @@ class Controller:
         self.face.registerPrefix(sd_ctl_prefix, None, self.on_register_failed)
         # /<home-prefix>/<SD_CTL=2>/<SD_CTL_META=0>
         self.face.setInterestFilter(Name(sd_ctl_prefix).append(Name.Component.fromNumber(0)), self.on_sd_ctl_interest)
-
-    def get_service_list(self):
-        ret = ServiceList()
-        for sname, exp_time in self.real_service_list.items():
-            item = ServiceItem()
-            item.service_id = Name(sname)[2].toNumber()
-            item.service_name = sname
-            item.exp_time = exp_time
-            ret.services.append(item)
-        return ret
-
-    def set_service_list(self, srv_lst):
-        self.real_service_list = {}
-        cur_time = self.get_time_now_ms()
-        for item in srv_lst.services:
-            if item.exp_time > cur_time:
-                self.real_service_list[item.service_name] = item.exp_time
-
-    service_list = property(get_service_list, set_service_list)

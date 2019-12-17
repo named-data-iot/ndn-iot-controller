@@ -4,6 +4,7 @@ import os
 import logging
 from ndniot.controller import Controller
 from ndniot.db_storage import *
+from ndn.encoding import Name
 from PIL import Image
 from pyzbar.pyzbar import decode
 import json
@@ -11,6 +12,7 @@ from aiohttp import web
 import socketio
 import aiohttp_jinja2
 import jinja2
+from datetime import datetime
 
 def app_main():
     logging.basicConfig(format='[{asctime}]{levelname}:{message}',
@@ -132,7 +134,7 @@ def app_main():
         for device in controller.device_list.devices:
             ret.append({'deviceId': bytes(device.device_id).decode(),
                         'deviceInfo': bytes(device.device_info).decode(),
-                        'deviceIdentityName': bytes(device.device_identity_name).decode()})
+                        'deviceIdentityName': Name.to_str(device.device_identity_name)})
         return {'device_list': ret}
 
     @routes.post('/delete/device')
@@ -147,8 +149,11 @@ def app_main():
             pass # great, the key has already been removed
         # delete from database
         controller.device_list.devices = [device for device in controller.device_list.devices
-                                          if bytes(device.device_identity_name).decode() != data['deviceIdentityName']]
-        # TODO: delete service information of this device
+                                          if Name.to_str(device.device_identity_name) != data['deviceIdentityName']]
+        # delete service info
+        temp_name = Name.normalize(data['deviceIdentityName'])
+        controller.service_list.services = [service for service in controller.service_list.services
+                                            if service.service_name[2:4] != temp_name[1:3]]
         return web.json_response({"st_code": 200})
 
     ### service list
@@ -156,9 +161,12 @@ def app_main():
     @aiohttp_jinja2.template('service-list.html')
     async def service_list(request):
         list = []
+        logging.debug('/service-list response')
         for service in controller.service_list.services:
-            list.append({'serviceId': str(service.service_id), 'serviceName': str(service.service_name),
-                         'expTime': str(service.exp_time)})
+            tp = service.exp_time / 1000
+
+            list.append({'serviceId': str(service.service_id), 'serviceName': Name.to_str(service.service_name),
+                         'expTime': datetime.utcfromtimestamp(tp).strftime('%Y-%m-%d %H:%M:%S')})
         return {'service_list': list}
 
     ### service invocation
