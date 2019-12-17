@@ -139,7 +139,12 @@ def app_main():
     async def remove_device(request):
         data = await request.json()
         # delete from keychain
-        controller.app.keychain.del_identity(data['deviceIdentityName'])
+        try:
+            # TODO bring this line back when the identity delete bug is fixed
+            # controller.app.keychain.del_identity(data['deviceIdentityName'])
+            os.system('ndnsec-delete ' + data['deviceIdentityName'])
+        except KeyError:
+            pass # great, the key has already been removed
         # delete from database
         controller.device_list.devices = [device for device in controller.device_list.devices
                                           if bytes(device.device_identity_name).decode() != data['deviceIdentityName']]

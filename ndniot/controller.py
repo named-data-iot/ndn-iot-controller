@@ -6,6 +6,7 @@ import time
 from .ECDH import ECDH
 from hashlib import sha256
 from os import urandom
+from random import SystemRandom
 from Cryptodome.Cipher import AES
 from Cryptodome.Util.Padding import pad
 from base64 import b64encode
@@ -25,6 +26,18 @@ default_udp_multi_uri = "udp4://224.0.23.170:56363"
 controller_port = 6363
 
 class Controller:
+    """
+    NDN IoT Controller.
+
+    :ivar app: the python-ndn app
+    :ivar system_prefix: a string representing the home namespace
+    :ivar system_anchor: a TLV format NDN certificate
+    :ivar db: the database handler
+    :ivar device_list: the list of device
+    :ivar access_list: the list of access rights
+    :ivar shared_secret_list: the list of already-shared secrets
+    """
+
     def __init__(self, emit_func):
         self.emit = emit_func
         self.running = True
@@ -44,6 +57,9 @@ class Controller:
         self.shared_secret_list = SharedSecrets()
 
     def save_db(self):
+        """
+        Save the state into the database.
+        """
         logging.debug('Save state to DB')
         if self.db:
             wb = self.db.write_batch()
@@ -56,6 +72,12 @@ class Controller:
             self.db.close()
 
     def system_init(self):
+        """
+        Init the system in terms of:
+        Step 1: Create/load system prefix and system anchor from the storage if any
+        Step 2: Create/load device list, service list, access rights, and shared secrets from the storage
+        """
+
         logging.info("Server starts its initialization")
         # create or get existing state
         # Step One: Meta Info
@@ -102,6 +124,11 @@ class Controller:
         logging.info("Server finishes the step 2 initialization")
 
     async def iot_connectivity_init(self):
+        """
+        Init the system in terms of:
+        Step 3: Configure network interface, forwarding strategy, and route
+        """
+
         # Step Three: Configure Face and Route
         # 1. Find/create NFD's UDP Multicast Face, BLE Multicast Face, etc.
         face_id = await self.query_face_id(default_udp_multi_uri)
@@ -126,7 +153,15 @@ class Controller:
 
         @self.app.route('/ndn/sign-on')
         def on_sign_on_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
-            # TODO:Verifying the signature
+            """
+            OnInterest callback when there is a security bootstrapping request
+
+            :param name: Interest packet name
+            :param param: Interest parameters
+            :app_param: Interest application paramters
+
+            TODO:Verifying the signature
+            """
             if not self.listen_to_boot_request:
                 return
             self.process_sign_on_request(name, app_param)
@@ -135,7 +170,15 @@ class Controller:
 
         @self.app.route(self.system_prefix + '/cert')
         def on_cert_request_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
-            # TODO:Verifying the signature
+            """
+            OnInterest callback when there is a certificate request during bootstrapping
+
+            :param name: Interest packet name
+            :param param: Interest parameters
+            :app_param: Interest application paramters
+
+            TODO:Verifying the signature
+            """
             if not self.listen_to_cert_request:
                 return
             self.process_cert_request(name, app_param)
@@ -144,15 +187,26 @@ class Controller:
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')])
         def on_sd_adv_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
-            # prefix = /<home-prefix>/<SD=1>/<ADV=0>
+            """
+            OnInterest callback when there is an service advertisement
+
+            :param name: Interest packet name
+            :param param: Interest parameters
+            :app_param: Interest application paramters
+
+            Packet format: prefix = /<home-prefix>/<SD=1>/<ADV=0>/device-id
+            App Parameter format:
+            TODO:Verifying the signature
+            """
             locator = name[3:-1]
+            logging.debug("Adv Interest sender locator: ", locator)
             fresh_period = struct.unpack("!I", app_param[:4])[0]
+            logging.debug("Adv Interest freshness: ", fresh_period)
             service_ids = [sid for sid in app_param[4:]]
-            logging.debug("ON ADV: %s %s %s", locator, fresh_period, service_ids)
             cur_time = self.get_time_now_ms()
             for sid in service_ids:
                 # /<home-prefix>/<SD=1>/<service>/<locator>
-                sname = [self.system_prefix, bytearray(b'\x08\x011'), sid, locator]
+                sname = [self.system_prefix, bytearray(b'\x08\x011'), bytearray(sid), locator]
                 sname = Name.normalize(sname)
                 logging.debug("SNAME: %s", sname)
                 self.real_service_list[sname] = cur_time + fresh_period
@@ -161,6 +215,14 @@ class Controller:
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
         def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+            """
+            OnInterest callback when device want to query the existing services in the system
+
+            :param name: Interest packet name
+            :param param: Interest parameters
+            :app_param: Interest application paramters
+            TODO:Verifying the signature
+            """
             logging.info("SD : on interest")
             if app_param is None:
                 logging.error("Malformed Interest")
@@ -179,6 +241,12 @@ class Controller:
             logging.debug(name)
 
     def process_sign_on_request(self, name, app_param):
+        """
+        Process device's sign on request.
+
+        :param name: Interest packet name
+        :param app_param: Interest application parameters
+        """
         logging.info("[SIGN ON]: interest received")
         if not app_param:
             logging.error("[SIGN ON]: interest has no parameter")
@@ -253,32 +321,38 @@ class Controller:
             return
         # anchor signed certificate
         # create identity and key for the device
-        device_name = '/' + self.system_prefix + '/' + bytes(request.identifier).decode()
+        # TODO Remove hardcoded livingroom and ask user for which room the device belongs to
+        device_name = '/' + self.system_prefix + '/livingroom' + '/' + bytes(request.identifier).decode()
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert().data
-        # resign certificate using anchor's key
+        # re-sign certificate using anchor's key
         cert = parse_certificate(default_cert)
         new_cert_name = cert.name[:-2]
+        logging.debug(new_cert_name)
         new_cert_name.append('home')
-        new_cert_name.append('001')
+        new_cert_name.append(Name.Component.from_version(SystemRandom().randint(10000000, 99999999)))
+        logging.debug(new_cert_name)
         cert = self.app.prepare_data(new_cert_name, cert.content, identity=self.system_prefix)
         # AES
         iv = urandom(16)
         cipher = AES.new(self.boot_state['SharedKey'], AES.MODE_CBC, iv)
-        ct_bytes = cipher.encrypt(pad(private_key, AES.block_size))
+        ct_bytes = cipher.encrypt(private_key)
+        logging.info('raw private key')
+        logging.info(private_key)
         logging.info('Symmetic Key')
         logging.info(self.boot_state['SharedKey'])
         # AES IV
         logging.info("IV:")
         logging.info(iv)
-        # encrpted device private key with temporary symmetric key
-        ct = b64encode(ct_bytes)
         logging.info("Cipher:")
-        logging.info(ct)
+        logging.info(ct_bytes)
+        logging.info('Cipher length: ' + str(len(ct_bytes)))
+        # encrpted device private key with temporary symmetric key
+        #ct = b64encode(ct_bytes)
 
         response = CertResponse()
-        response.cipher = ct
+        response.cipher = ct_bytes
         response.iv = iv
         cert_bytes = parse_and_check_tl(cert, TypeNumber.DATA)
         response.id_cert = cert_bytes
@@ -305,7 +379,7 @@ class Controller:
         self.boot_event = asyncio.Event()
         self.listen_to_boot_request = True
         try:
-            await asyncio.wait_for(self.boot_event.wait(), timeout=5.0)
+            await asyncio.wait_for(self.boot_event.wait(), timeout=8.0)
         except asyncio.TimeoutError:
             self.boot_event.set()
         self.boot_event = None
