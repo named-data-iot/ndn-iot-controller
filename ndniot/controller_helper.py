@@ -34,10 +34,9 @@ def get_prv_key_from_safe_bag(id_name):
     logging.debug(ecc_key.pointQ.xy)
     logging.debug("prv key: ")
     logging.debug(ecc_key.d)
-    cert_prv_key_hex = hex(ecc_key.d)[2:]
-    cert_prv_key = bytes.fromhex(cert_prv_key_hex)
-    logging.info("Private KEY:")
-    logging.info(cert_prv_key_hex)
+    cert_prv_key = ecc_key.d.to_bytes()
+    logging.info("Private KEY: ")
+    logging.info(cert_prv_key)
     return cert_prv_key
 
 

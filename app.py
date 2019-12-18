@@ -14,11 +14,13 @@ import aiohttp_jinja2
 import jinja2
 from datetime import datetime
 
+int_to_service_mapping = {
+
+}
+
 def app_main():
-    logging.basicConfig(format='[{asctime}]{levelname}:{message}',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.DEBUG,
-                        style='{')
+    logging.basicConfig(format='[{asctime}]{levelname}:{message}', datefmt='%Y-%m-%d %H:%M:%S',
+                        level=logging.DEBUG, style='{')
 
     base_path = os.getcwd()
     # Serve static content from /static
