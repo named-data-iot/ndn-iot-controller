@@ -8,10 +8,10 @@ from hashlib import sha256
 from os import urandom
 from random import SystemRandom
 from Cryptodome.Cipher import AES
-from Cryptodome.Util.Padding import pad
-from base64 import b64encode
+from Cryptodome.Hash import SHA256
+from Cryptodome.Signature import DSS
 from .db_storage import *
-from ndn.encoding import Component, InterestParam, BinaryStr, FormalName, Name
+from ndn.encoding import Component, InterestParam, BinaryStr, FormalName, Name, SignaturePtrs, SignatureType
 from ndn.app_support.nfd_mgmt import parse_response, make_command, FaceQueryFilter, FaceQueryFilterValue, FaceStatusMsg
 from ndn.app import NDNApp
 from ndn.types import InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError
@@ -185,7 +185,7 @@ class Controller:
 
         await asyncio.sleep(0.1)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')])
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')], validator=self.verify_device_signature)
         def on_sd_adv_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when there is an service advertisement
@@ -230,7 +230,7 @@ class Controller:
 
         await asyncio.sleep(0.1)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')], validator=self.verify_device_signature)
         def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when device want to query the existing services in the system
@@ -416,6 +416,36 @@ class Controller:
 
     def invoke_service(self, parameter_list):
         pass
+
+    async def verify_device_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
+        sig_info = sig.signature_info
+        covered_part = sig.signature_covered_part
+        sig_value = sig.signature_value_buf
+        if not sig_info or sig_info.signature_type != SignatureType.SHA256_WITH_ECDSA:
+            return False
+
+        if not covered_part or not sig_value:
+            return False
+        identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+        logging.debug('Extract identity id from key id')
+        logging.debug(Name.to_str(identity))
+        key_bits = None
+        try:
+            key_bits = self.app.keychain.get(identity).default_key().key_bits
+        except KeyError:
+            logging.error('Cannot find pub key from keychain')
+        pk = ECC.import_key(key_bits)
+        verifier = DSS.new(pk, 'fips-186-3', 'der')
+        hash = SHA256.new()
+        for blk in covered_part:
+            hash.update(blk)
+        logging.debug(bytes(sig_value))
+        logging.debug(len(bytes(sig_value)))
+        try:
+            verifier.verify(hash, bytes(sig_value))
+        except ValueError:
+            return False
+        return True
 
     async def query_face_id(self, uri):
         query_filter = FaceQueryFilter()

@@ -2,6 +2,7 @@ import subprocess
 import base64
 import logging
 from Cryptodome.IO.PKCS8 import unwrap
+from Cryptodome.PublicKey import ECC
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from ndn.encoding import parse_and_check_tl
@@ -24,9 +25,12 @@ def get_prv_key_from_safe_bag(id_name):
     # Don't use unwrap because the key returned is still in DER format
     #key = unwrap(bytes(bag.encrypted_key_bag), '1234')[1]
     privateKey = serialization.load_der_private_key(bytes(bag.encrypted_key_bag), password=b'1234', backend=default_backend())
-
-    cert_prv_key_hex = unwrap(privateKey.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption()))[1].hex()[
-                       14:78]
+    ecc_key = ECC.import_key(privateKey.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption()))
+    logging.debug("pub key: ")
+    logging.debug(ecc_key.pointQ.xy)
+    logging.debug("prv key: ")
+    logging.debug(ecc_key.d)
+    cert_prv_key_hex = hex(ecc_key.d)[2:]
     cert_prv_key = bytes.fromhex(cert_prv_key_hex)
     logging.info("Private KEY:")
     logging.info(cert_prv_key_hex)
