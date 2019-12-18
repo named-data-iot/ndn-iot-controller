@@ -9,26 +9,35 @@
 <h2>Service Invocation</h2>
 
 <div id="invoke_service">
+
   <el-form label-position="left" label-width="120px" :model="form">
 
-  <el-form-item label="Service ID">
-    <el-input v-model="form.service_id" style="width:75%"></el-input>
-  </el-form-item>
-  <el-form-item label="Can be prefix">
+  <el-form-item label="Service To Invoke">
+     <el-select v-model="form.service_name" placeholder="Select" style="width:75%">
+     <el-option
+      v-for="item in options"
+      :key="item.value"
+      :label="item.label"
+      :value="item.value">
+    </el-option>
+    </el-select>
 
-    <el-radio-group v-model="form.can_be_prefix">
-      <el-radio label="Any"></el-radio>
-      <el-radio label="All"></el-radio>
-      <el-radio label="Designated"></el-radio>
+  </el-form-item>
+
+  <el-form-item label="Service Type">
+
+    <el-radio-group v-model="form.service_type">
+      <el-radio label="Data Fetching"></el-radio>
+      <el-radio label="Issue Command"></el-radio>
     </el-radio-group>
   </el-form-item>
 
-    <el-form-item v-if="form.can_be_prefix == 'Designated'" label="Specific name">
-      <el-input v-model="form.granularity" style="width:75%"></el-input>
+    <el-form-item v-if="form.can_be_prefix == 'Issue Command'" label="Data/Command">
+      <el-input v-model="form.command" style="width:75%"></el-input>
     </el-form-item>
 
-     <el-form-item v-else label="Service prefix">
-      <el-input v-model="form.granularity" style="width:75%"></el-input>
+     <el-form-item v-else label="Data/Command">
+      <el-input v-model="form.command" style="width:75%"></el-input>
     </el-form-item>
 
   <el-form-item>
@@ -71,10 +80,11 @@
     data(){
       return{
         form:{
-          service_id:'',
-          can_be_prefix:'Any',
-          granularity:'',
-        }
+          service_name:'',
+          service_type:'Data Fetching',
+          command:'',
+        },
+        options: {{service_list | tojson}}
       }
      },
     methods:{

@@ -228,6 +228,16 @@ class Controller:
                     logging.debug('Add new service into the service list')
                     self.service_list.services.append(service)
 
+                already_added = False
+                for service_meta in self.service_list.service_meta_items:
+                    if service_meta.service_id == sid:
+                        already_added = True
+                if not already_added:
+                    service_meta = ServiceMetaItem()
+                    service_meta.service_id = sid
+                    aes_key = urandom(16)
+                    service_meta.encryption_key = aes_key
+
         await asyncio.sleep(0.1)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
@@ -344,6 +354,7 @@ class Controller:
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert().data
+
         # re-sign certificate using anchor's key
         cert = parse_certificate(default_cert)
         new_cert_name = cert.name[:-2]

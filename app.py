@@ -175,7 +175,11 @@ def app_main():
     @routes.get('/invoke-service', name='invoke-service')
     @aiohttp_jinja2.template('invoke-service.html')
     async def invoke_service(request):
-        return
+        list = []
+        logging.debug('/invoke-list response')
+        for service in controller.service_list.services:
+            list.append({'value': Name.to_str(service.service_name), 'label': Name.to_str(service.service_name)})
+        return {'service_list': list}
 
     @routes.post('/exec/invoke-service')
     async def trigger_invocation(request):
