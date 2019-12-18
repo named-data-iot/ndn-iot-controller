@@ -3,23 +3,24 @@ import logging
 import plyvel
 import struct
 import time
-from .ECDH import ECDH
 from hashlib import sha256
 from os import urandom
 from random import SystemRandom
+from typing import Optional
+
 from Cryptodome.Cipher import AES
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import DSS
-from .db_storage import *
-from ndn.encoding import Component, InterestParam, BinaryStr, FormalName, Name, SignaturePtrs, SignatureType
-from ndn.app_support.nfd_mgmt import parse_response, make_command, FaceQueryFilter, FaceQueryFilterValue, FaceStatusMsg
-from ndn.app import NDNApp
-from ndn.types import InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError
-from typing import Optional
+
 from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
+from ndn.encoding import InterestParam, BinaryStr, FormalName, SignaturePtrs, SignatureType, Name
+from ndn.app import NDNApp
+
+from .db_storage import *
 from .controller_helper import *
 from .ndn_security_sign_on import *
+from .ECDH import ECDH
 
 default_prefix = "ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
@@ -41,7 +42,6 @@ class Controller:
     def __init__(self, emit_func):
         self.emit = emit_func
         self.running = True
-        self.networking_ready = False
         self.listen_to_boot_request = False
         self.listen_to_cert_request = False
         self.boot_state = None
@@ -131,27 +131,26 @@ class Controller:
 
         # Step Three: Configure Face and Route
         # 1. Find/create NFD's UDP Multicast Face, BLE Multicast Face, etc.
-        face_id = await self.query_face_id(default_udp_multi_uri)
+        face_id = await query_face_id(self.app, default_udp_multi_uri)
         if not face_id:
             logging.fatal("Cannot find existing udp multicast face")
             return
         logging.info("Successfully found UDP multicast face: %d", face_id)
         # 2. Set up NFD's route from IoT system prefix to multicast faces
-        ret = await self.add_route(self.system_prefix, face_id)
+        ret = await add_route(self.app, self.system_prefix, face_id)
         if ret is True:
             logging.info("Successfully add route.")
         else:
             logging.fatal("Cannot set up the route for IoT prefix")
         # 3. Set up NFD's multicast strategy for IoT system namespace
-        ret = await self.set_strategy(self.system_prefix, "/localhost/nfd/strategy/multicast")
+        ret = await set_strategy(self.app, self.system_prefix, "/localhost/nfd/strategy/multicast")
         if ret is True:
-            self.networking_ready = True
             logging.info("Successfully add multicast strategy.")
             logging.info("Server finishes the step 3 initialization")
         else:
             logging.fatal("Cannot set up the strategy for IoT prefix")
 
-        @self.app.route('/ndn/sign-on')
+        @self.app.route('/ndn/sign-on', validator=self.verify_device_sign_on_ecdsa_signature)
         def on_sign_on_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when there is a security bootstrapping request
@@ -168,7 +167,7 @@ class Controller:
 
         await asyncio.sleep(0.1)
 
-        @self.app.route(self.system_prefix + '/cert')
+        @self.app.route(self.system_prefix + '/cert', validator=self.verify_device_sign_on_ecdsa_signature)
         def on_cert_request_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when there is a certificate request during bootstrapping
@@ -185,7 +184,8 @@ class Controller:
 
         await asyncio.sleep(0.1)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')], validator=self.verify_device_signature)
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x01'), bytearray(b'\x08\x01\x00')],
+                        validator=self.verify_device_ecdsa_signature)
         def on_sd_adv_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when there is an service advertisement
@@ -230,7 +230,7 @@ class Controller:
 
         await asyncio.sleep(0.1)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')], validator=self.verify_device_signature)
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
         def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when device want to query the existing services in the system
@@ -240,22 +240,23 @@ class Controller:
             :app_param: Interest application paramters
             TODO:Verifying the signature
             """
-            logging.info("SD : on interest")
+            logging.info("Service query from device")
             if app_param is None:
                 logging.error("Malformed Interest")
                 return
             interested_ids = {sid for sid in app_param}
             result = b''
             cur_time = self.get_time_now_ms()
-            for sname, exp_time in self.real_service_list.items():
-                sid = sname[2][2]
-                if sid in interested_ids and exp_time > cur_time:
-                    result += Name.encode(sname)
-                    result += struct.pack("i", exp_time - cur_time)
+            for service in self.service_list.services:
+                if service.service_id not in interested_ids:
+                    continue
+                if service.exp_time > cur_time:
+                    result += Name.encode(service.service_name)
+                    result += struct.pack("i", service.exp_time - cur_time)
 
-            self.app.put_data(name, result, freshness_period=3000, identity=self.system_prefix)
-            logging.debug("PutData")
-            logging.debug(name)
+            if len(result) > 0:
+                self.app.put_data(name, result, freshness_period=3000, identity=self.system_prefix)
+                logging.debug("Replied service data back to the device")
 
     def process_sign_on_request(self, name, app_param):
         """
@@ -381,17 +382,10 @@ class Controller:
         self.boot_event.set()
 
     async def bootstrapping(self):
-        self.boot_state = {'DeviceIdentifier': None,
-                           'DeviceCapability': None,
-                           'N1PublicKey': None,
-                           'N2PrivateKey': None,
-                           'N2PublicKey': None,
-                           'SharedKey': None,
-                           'Salt': None,
-                           'TrustAnchorDigest': None,
-                           'SharedPublicKey': None,
-                           'SharedSymmetricKey': None,
-                           'DeviceIdentityName': None,
+        self.boot_state = {'DeviceIdentifier': None, 'DeviceCapability': None,
+                           'N1PublicKey': None, 'N2PrivateKey': None, 'N2PublicKey': None,
+                           'SharedKey': None, 'Salt': None, 'TrustAnchorDigest': None,
+                           'SharedPublicKey': None, 'SharedSymmetricKey': None, 'DeviceIdentityName': None,
                            'Success': False}
         self.boot_event = asyncio.Event()
         self.listen_to_boot_request = True
@@ -407,23 +401,17 @@ class Controller:
             new_device.device_id = self.boot_state["DeviceIdentifier"]
             new_device.device_info = self.boot_state["DeviceCapability"]
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
+            new_device.aes_key = self.boot_state['SharedSymmetricKey']
             self.device_list.devices.append(new_device)
             return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName']}
         return {'st_code': 500}
 
-    def get_access_status(self, parameter_list):
-        pass
-
-    def invoke_service(self, parameter_list):
-        pass
-
-    async def verify_device_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
+    async def verify_device_ecdsa_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
         sig_info = sig.signature_info
         covered_part = sig.signature_covered_part
         sig_value = sig.signature_value_buf
         if not sig_info or sig_info.signature_type != SignatureType.SHA256_WITH_ECDSA:
             return False
-
         if not covered_part or not sig_value:
             return False
         identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
@@ -436,79 +424,52 @@ class Controller:
             logging.error('Cannot find pub key from keychain')
         pk = ECC.import_key(key_bits)
         verifier = DSS.new(pk, 'fips-186-3', 'der')
-        hash = SHA256.new()
+        sha256_hash = SHA256.new()
         for blk in covered_part:
-            hash.update(blk)
+            sha256_hash.update(blk)
         logging.debug(bytes(sig_value))
         logging.debug(len(bytes(sig_value)))
         try:
-            verifier.verify(hash, bytes(sig_value))
+            verifier.verify(sha256_hash, bytes(sig_value))
         except ValueError:
             return False
         return True
 
-    async def query_face_id(self, uri):
-        query_filter = FaceQueryFilter()
-        query_filter.face_query_filter = FaceQueryFilterValue()
-        query_filter.face_query_filter.uri = uri.encode('utf-8')
-        query_filter_msg = query_filter.encode()
-        name = Name.from_str("/localhost/nfd/faces/query") + [Component.from_bytes(query_filter_msg)]
-        try:
-            _, _, data = await self.app.express_interest(name, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
-        except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-             logging.error(f'Query failed')
-             return None
-        ret = FaceStatusMsg.parse(data)
-        logging.info(ret)
-        return ret.face_status[0].face_id
-
-    async def add_route(self, name: str, face_id: int):
-        interest = make_command('rib', 'register', name=name, face_id=face_id)
-        try:
-            _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
-        except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-            logging.error(f'Command failed')
+    async def verify_device_sign_on_ecdsa_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
+        sig_info = sig.signature_info
+        covered_part = sig.signature_covered_part
+        sig_value = sig.signature_value_buf
+        if not sig_info or sig_info.signature_type != SignatureType.SHA256_WITH_ECDSA:
             return False
-        ret = parse_response(data)
-        if ret['status_code'] <= 399:
-            return True
-        return False
-
-    async def remove_route(self, name: str, face_id: int):
-        interest = make_command('rib', 'unregister', name=name, face_id=face_id)
-        try:
-            _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
-        except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-            logging.error(f'Command failed')
+        if not covered_part or not sig_value:
             return False
-        ret = parse_response(data)
-        if ret['status_code'] <= 399:
-            return True
-        return False
 
-    async def set_strategy(self, name: str, strategy: str):
-        interest = make_command('strategy-choice', 'set', name=name, strategy=strategy)
-        try:
-            _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
-        except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-            logging.error(f'Command failed')
+        device_identifier = Name.to_str([sig_info.key_locator.name[0]])[1:]
+        logging.debug('Extract device id from key locator')
+        logging.debug(device_identifier)
+        pk = None
+        for ss in self.shared_secret_list.shared_secrets:
+            if bytes(ss.device_identifier) == device_identifier.encode():
+                pub_key_bytes = bytes.fromhex(bytes(ss.public_key).decode())
+                pk = ECC.construct(curve='p256',
+                                   point_x=int.from_bytes(pub_key_bytes[:32], byteorder='big'),
+                                   point_y=int.from_bytes(pub_key_bytes[32:], byteorder='big'))
+                #pk = ECC.import_key(bytes(ss.public_key))
+                break
+        if not pk:
+            logging.error("[SIGN ON]: no pre-shared public key about the device")
             return False
-        ret = parse_response(data)
-        if ret['status_code'] <= 399:
-            return True
-        return False
-
-    async def unset_strategy(self, name: str):
-        interest = make_command('strategy-choice', 'unset', name=name)
+        verifier = DSS.new(pk, 'fips-186-3', 'der')
+        sha256_hash = SHA256.new()
+        for blk in covered_part:
+            sha256_hash.update(blk)
+        logging.debug(bytes(sig_value))
+        logging.debug(len(bytes(sig_value)))
         try:
-            _, _, data = await self.app.express_interest(interest, lifetime=1000, can_be_prefix=True, must_be_fresh=True)
-        except (InterestCanceled, InterestTimeout, InterestNack, ValidationFailure, NetworkError):
-            logging.error(f'Command failed')
+            verifier.verify(sha256_hash, bytes(sig_value))
+        except ValueError:
             return False
-        ret = parse_response(data)
-        if ret['status_code'] <= 399:
-            return True
-        return False
+        return True
 
     async def run(self):
         logging.info("Restarting app...")

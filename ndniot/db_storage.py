@@ -4,6 +4,7 @@ from ndn.encoding import TlvModel, BytesField, RepeatedField, ModelField, UintFi
 class DeviceItem(TlvModel):
     device_id = BytesField(1)
     device_info = BytesField(2)
+    aes_key = BytesField(3)
     device_identity_name = NameField()
 
 

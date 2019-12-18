@@ -130,7 +130,7 @@ def app_main():
     @routes.get('/device-list')
     @aiohttp_jinja2.template('device-list.html')
     async def device_list(request):
-        ret =[]
+        ret = []
         for device in controller.device_list.devices:
             ret.append({'deviceId': bytes(device.device_id).decode(),
                         'deviceInfo': bytes(device.device_info).decode(),
