@@ -13,7 +13,7 @@
   <el-form label-position="left" label-width="120px" :model="form">
 
   <el-form-item label="Service To Invoke">
-     <el-select v-model="form.service_name" placeholder="Select" style="width:75%">
+     <el-select v-model="form.service_name" placeholder="Select" style="width:75%" no-data-text="No available services">
      <el-option
       v-for="item in options"
       :key="item.value"

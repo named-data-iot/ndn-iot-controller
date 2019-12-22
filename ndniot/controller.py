@@ -19,7 +19,7 @@ from ndn.app import NDNApp
 
 from .db_storage import *
 from .controller_helper import *
-from .ndn_security_sign_on import *
+from .ndn_lite_protocols import *
 from .ECDH import ECDH
 
 default_prefix = "ndn-iot"
@@ -199,21 +199,17 @@ class Controller:
             TODO:Verifying the signature
             """
             locator = name[3:-1]
-            logging.debug("Adv Interest sender locator: ")
-            logging.debug(locator)
+            logging.debug("Adv Interest sender locator: %s", Name.to_str(locator))
             fresh_period = struct.unpack("!I", app_param[:4])[0]
-            logging.debug("Adv Interest freshness: ")
-            logging.debug(fresh_period)
+            logging.debug("Adv Interest freshness: %s", str(fresh_period))
             service_ids = [sid for sid in app_param[4:]]
-            logging.debug('service ids')
-            logging.debug(service_ids)
+            logging.debug('service ids %s', str(service_ids))
             cur_time = self.get_time_now_ms()
             for sid in service_ids:
                 # Name format: /<home-prefix>/<service>/<locator>
                 sname = [self.system_prefix, b'\x08\x01' + bytes([sid])] + locator
                 sname = Name.to_str(sname)
-                logging.debug('Service Name: ')
-                logging.debug(sname)
+                logging.debug('Service Name: %s', sname)
 
                 already_added = False
                 for item in self.service_list.services:
@@ -237,10 +233,13 @@ class Controller:
                     service_meta.service_id = sid
                     aes_key = urandom(16)
                     service_meta.encryption_key = aes_key
+                    logging.debug('Add new service meta into the service list')
+                    self.service_list.service_meta_items.append(service_meta)
 
         await asyncio.sleep(0.1)
 
-        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')])
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')],
+                        validator=self.verify_device_ecdsa_signature)
         def on_sd_ctl_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
             """
             OnInterest callback when device want to query the existing services in the system
@@ -267,6 +266,50 @@ class Controller:
             if len(result) > 0:
                 self.app.put_data(name, result, freshness_period=3000, identity=self.system_prefix)
                 logging.debug("Replied service data back to the device")
+            else:
+                logging.debug("Don't have services needed by the device, won't reply")
+
+        await asyncio.sleep(0.1)
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x00')],
+                        validator=self.verify_device_ecdsa_signature)
+        def on_access_control_ekey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+            target_service = name[-2]
+            logging.debug(bytes(target_service))
+            target_service = bytes(target_service)[-1]
+            logging.debug('target service id: %s', str(target_service))
+            for service_meta in self.service_list.service_meta_items:
+                if service_meta.service_id == target_service:
+                    # TODO encrypt the content when signature info can be accessed in onInterest callback
+                    device = self.device_list.devices[0]
+                    # AES encryption
+                    iv = urandom(16)
+                    cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                    ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                    content_tlv = EkeyDkeyResponse()
+                    content_tlv.iv = iv
+                    content_tlv.cipher = ct_bytes
+                    self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
+
+        @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x01')],
+                        validator=self.verify_device_ecdsa_signature)
+        def on_access_control_dkey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+            target_service = name[-2]
+            logging.debug(bytes(target_service))
+            target_service = bytes(target_service)[-1]
+            logging.debug('target service id: %s', str(target_service))
+            for service_meta in self.service_list.service_meta_items:
+                if service_meta.service_id == target_service:
+                    # TODO encrypt the content when signature info can be accessed in onInterest callback
+                    device = self.device_list.devices[0]
+                    # AES encryption
+                    iv = urandom(16)
+                    cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                    ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                    content_tlv = EkeyDkeyResponse()
+                    content_tlv.iv = iv
+                    content_tlv.cipher = ct_bytes
+                    self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
     def process_sign_on_request(self, name, app_param):
         """
@@ -378,7 +421,7 @@ class Controller:
         logging.info(ct_bytes)
         logging.info('Cipher length: ' + str(len(ct_bytes)))
         # encrpted device private key with temporary symmetric key
-        #ct = b64encode(ct_bytes)
+        # ct = b64encode(ct_bytes)
 
         response = CertResponse()
         response.cipher = ct_bytes
@@ -426,8 +469,7 @@ class Controller:
         if not covered_part or not sig_value:
             return False
         identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
-        logging.debug('Extract identity id from key id')
-        logging.debug(Name.to_str(identity))
+        logging.debug('Extract identity id from key id: %s', Name.to_str(identity))
         key_bits = None
         try:
             key_bits = self.app.keychain.get(identity).default_key().key_bits
@@ -456,8 +498,7 @@ class Controller:
             return False
 
         device_identifier = Name.to_str([sig_info.key_locator.name[0]])[1:]
-        logging.debug('Extract device id from key locator')
-        logging.debug(device_identifier)
+        logging.debug('Extract device id from key locator: %s', device_identifier)
         pk = None
         for ss in self.shared_secret_list.shared_secrets:
             if bytes(ss.device_identifier) == device_identifier.encode():

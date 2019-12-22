@@ -8,6 +8,8 @@ TLV_AC_SALT = 131
 TLV_AC_AES_IV = 135
 TLV_AC_ENCRYPTED_PAYLOAD = 136
 
+
+# Security Sign On protocol
 class SignOnRequest(TlvModel):
     identifier = BytesField(TypeNumber.GENERIC_NAME_COMPONENT)
     capabilities = BytesField(TLV_SEC_BOOT_CAPABILITIES)
@@ -26,5 +28,10 @@ class CertRequest(TlvModel):
 
 class CertResponse(TlvModel):
     id_cert = BytesField(TypeNumber.DATA)
+    iv = BytesField(TLV_AC_AES_IV)
+    cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
+
+# Access Control protocol
+class EkeyDkeyResponse(TlvModel):
     iv = BytesField(TLV_AC_AES_IV)
     cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
