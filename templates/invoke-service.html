@@ -26,18 +26,18 @@
 
   <el-form-item label="Service Type">
 
-    <el-radio-group v-model="form.service_type">
-      <el-radio label="Data Fetching"></el-radio>
-      <el-radio label="Issue Command"></el-radio>
+    <el-radio-group v-model="form.is_cmd">
+      <el-radio-button label="false">Data Fetching</el-radio-button>
+      <el-radio-button label="true">Issue Command</el-radio-button>
     </el-radio-group>
   </el-form-item>
 
-    <el-form-item v-if="form.can_be_prefix == 'Issue Command'" label="Data/Command">
-      <el-input v-model="form.command" style="width:75%"></el-input>
+    <el-form-item v-if="form.is_cmd == 'true'" label="Command">
+      <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
     </el-form-item>
 
-     <el-form-item v-else label="Data/Command">
-      <el-input v-model="form.command" style="width:75%"></el-input>
+     <el-form-item v-else label="Content ID">
+      <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
     </el-form-item>
 
   <el-form-item>
@@ -47,27 +47,6 @@
   </el-form>
 </div>
 
-{% if response_time %}
-  <h2>Response</h2>
-  <p>Response Time: {{ response_time|e }}</p>
-  <p>Response Type: {{ response_type|e }}</p>
-  <p>Name: {{ name|e }}</p>
-{% endif %}
-{% if content_type %}
-  <p>ContentType: {{ content_type|e }}</p>
-{% endif %}
-{% if freshness_period %}
-  <p>FreshnessPeriod: {{ freshness_period|e }}</p>
-{% endif %}
-{% if final_block_id %}
-  <p>FinalBlockId: {{ final_block_id|e }}</p>
-{% endif %}
-{% if signature_type %}
-  <p>SignatureType: {{ signature_type|e }}</p>
-{% endif %}
-{% if reason %}
-  <p>Reason Code: {{ reason|e }}</p>
-{% endif %}
 </body>
 </html>
 
@@ -81,8 +60,8 @@
       return{
         form:{
           service_name:'',
-          service_type:'Data Fetching',
-          command:'',
+          is_cmd: false,
+          data_or_cmd:'',
         },
         options: {{service_list | tojson}}
       }
@@ -90,11 +69,49 @@
     methods:{
       onSubmit(){
           console.log(this.form);
-          axios.post('/exec/ndn-ping',{service_id: this.form.service_id,
-                                       can_be_prefix: this.form.can_be_prefix,
-                                       granularity: this.form.granularity},{
+          axios.post('/exec/invoke-service', {service_name: this.form.service_name,
+                                        is_cmd: this.form.service_type,
+                                        data_or_cmd: this.form.data_or_cmd},{
                         headers: {'Content-Type': 'application/json'}
-                        }).then(res=>{});
+                        }).then(response=>{
+                           ret = response.data;
+                           if (ret.response_type === 'Timeout'){
+                               txt =  '<div>Response Time: ' + ret.response_time +'</div>' +
+                                      '<div>Response Type: ' + ret.response_type +'</div>' +
+                                      '<div>Name: ' + ret.name + '</div>';
+                               this.$notify({
+                                  title: 'Timeout',
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
+                                  type: 'error'
+                               });
+                           }else if (ret.response_type === 'NetworkNack'){
+                                txt = '<div>Response Time: ' + ret.response_time + '</div>' +
+                                      '<div>Response Type: ' + ret.response_type +'</div>' +
+                                      '<div>Name: ' + ret.name +'</div>' +
+                                      '<div>Reason: ' + ret.reason + '</div>';
+                               this.$notify({
+                                  title: 'NetworkNack',
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
+                                  type: 'error'
+                               });
+                           }else{
+                                txt = '<div>Response Time: ' + ret.response_time + '</div>' +
+                                      '<div>Response Type: ' + ret.response_type + '</div>' +
+                                      '<div>Name: ' + ret.name + '</div>' +
+                                      '<div>Content Type: ' + ret.content_type + '</div>' +
+                                      '<div>Freshness Period: ' + ret.freshness_period + '</div>' +
+                                      '<div>Final Block Id: ' + ret.final_block_id + '</div>' +
+                                      '<div>Signature Type: ' + ret.signature_type + '</div>';
+                               this.$notify({
+                                  title: 'Success',
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
+                                  type: 'success'
+                               });
+                           }
+          });
       }
     }
   })

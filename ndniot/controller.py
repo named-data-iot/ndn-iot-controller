@@ -12,7 +12,7 @@ from Cryptodome.Cipher import AES
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import DSS
 
-from ndn.security.signer import HmacSha256Signer
+from ndn.security.signer import HmacSha256Signer, Sha256WithEcdsaSigner
 from ndn.app_support.security_v2 import parse_certificate
 from ndn.encoding import InterestParam, BinaryStr, FormalName, SignaturePtrs, SignatureType, Name
 from ndn.app import NDNApp
@@ -40,6 +40,8 @@ class Controller:
     """
 
     def __init__(self, emit_func):
+        self.newly_pub_command = None
+        self.wait_fetch_cmd_event = None
         self.emit = emit_func
         self.running = True
         self.listen_to_boot_request = False
@@ -473,8 +475,9 @@ class Controller:
         key_bits = None
         try:
             key_bits = self.app.keychain.get(identity).default_key().key_bits
-        except KeyError:
+        except (KeyError, AttributeError):
             logging.error('Cannot find pub key from keychain')
+            return False
         pk = ECC.import_key(key_bits)
         verifier = DSS.new(pk, 'fips-186-3', 'der')
         sha256_hash = SHA256.new()
@@ -522,6 +525,64 @@ class Controller:
         except ValueError:
             return False
         return True
+
+    async def use_service(self, service: str, is_cmd: bool, name_or_cmd: str):
+        service_name = Name.from_str(service)
+        # service name: /home/SERVICE/room/device-ids
+        # cmd interest name: /home/SERVICE/CMD/room/device-id/command
+        # notification interest name: /home/SERVICE/CMD/NOTIFY/room/device-id/command
+        # data fetching name: /home/SERVICE/DATA/room/device-id
+        if is_cmd:
+            service_name.insert(2, 'CMD')
+            service_name = service_name + Name.from_str(name_or_cmd)
+            notification_name = service_name
+            notification_name.insert(3, 'NOTIFY')
+            if self.newly_pub_command is not None:
+                success = await self.app.unregister(self.newly_pub_command)
+                if not success:
+                    logging.debug('cannot unregister prefix for command publish')
+            self.newly_pub_command = service_name
+
+            def on_service_fetch(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+                logging.debug('received Interest to fetch newly published command')
+                self.app.put_data(self.newly_pub_command, identity=self.system_prefix)
+                return
+
+            success = await self.app.register(service_name, on_service_fetch)
+            if not success:
+                logging.debug('cannot register prefix for command publish')
+            coroutine = self.app.express_interest(service_name, must_be_fresh=True, can_be_prefix=True,
+                                                  identity=self.system_prefix)
+            ret = {'name': service_name, 'response_type': 'Timeout'}
+        else:
+            service_name.insert(2, 'DATA')
+            service_name = service_name + Name.from_str(name_or_cmd)
+            ret = await self.express_interest(service_name, '', True, True, True)
+        return ret
+
+    async def express_interest(self, name: str, app_param: str, be_fresh: bool, be_prefix: bool, need_sig: bool):
+        interest_name = Name.from_str(name)
+        ret = {'name': name}
+        try:
+            if need_sig:
+                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param.encode(),
+                                                                        must_be_fresh=be_fresh, can_be_prefix=be_prefix)
+            else:
+                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param.encode(),
+                                                                        must_be_fresh=True,
+                                                                        can_be_prefix=True, identity=self.system_prefix)
+        except InterestNack as e:
+            ret['response_type'] = 'NetworkNack'
+            ret['reason'] = e.reason
+        except InterestTimeout:
+            ret['response_type'] = 'Timeout'
+        else:
+            ret['response_type'] = 'Data'
+            ret['name'] = Name.to_str(data_name)
+            ret['freshness_period'] = meta_info.freshness_period
+            ret['content_type'] = meta_info.content_type
+            ret['content'] = content.decode()
+        return ret
 
     async def run(self):
         logging.info("Restarting app...")

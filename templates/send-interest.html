@@ -2,32 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>NDN Ping</title>
+  <title>Express an NDN Interest packet</title>
   <link rel="stylesheet" href="../static/css/element-ui.css">
 
 </head>
 <body>
-<h2>NDN Ping</h2>
+<h2>Express an NDN Interest packet</h2>
 
 <div id="ndn_form" >
 <el-form label-position="left" label-width="120px" :model="form">
-  <el-form-item label="NDN Name">
+  <el-form-item label="Interest Name">
     <el-input v-model="form.name" style="width:75%"></el-input>
   </el-form-item>
-  <el-form-item label="Can be prefix">
+  <el-form-item label="Can Be Prefix">
     <el-switch v-model="form.can_be_prefix"></el-switch>
   </el-form-item>
-  <el-form-item label="Must be fresh">
+  <el-form-item label="Must Be Fresh">
     <el-switch v-model="form.must_be_fresh"></el-switch>
   </el-form-item>
   <el-form-item label="Signed Interest">
     <el-switch v-model="form.signed_interest"></el-switch>
   </el-form-item>
-  <el-form-item label="Interest life time">
+  <el-form-item label="Interest Lifetime">
      <el-input v-model="form.interest_lifetime" label="Interest lifetime" style="width:20%"></el-input>
   </el-form-item>
-  <el-form-item label="Application Parameter">
-     <el-input v-model="form.application_parameter" label="Application Parameter" style="width:20%"></el-input>
+  <el-form-item label="App Param">
+     <el-input v-model="form.application_parameter" label="Application Parameter" style="width:75%"></el-input>
   </el-form-item>
   <el-form-item>
     <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">Express Interest</el-button>
@@ -59,7 +59,7 @@
     methods:{
       onSubmit(){
           console.log(this.form);
-          axios.post('/exec/ndn-ping',
+          axios.post('/exec/send-interest',
                       {name: this.form.name,
                        can_be_prefix: this.form.can_be_prefix,
                        must_be_fresh: this.form.must_be_fresh,
@@ -97,8 +97,7 @@
                                       '<div>Name: ' + ret.name + '</div>' +
                                       '<div>Content Type: ' + ret.content_type + '</div>' +
                                       '<div>Freshness Period: ' + ret.freshness_period + '</div>' +
-                                      '<div>Final Block Id: ' + ret.final_block_id + '</div>' +
-                                      '<div>Signature Type: ' + ret.signature_type + '</div>';
+                                      '<div>Content: ' + ret.content + '</div>';
                                this.$notify({
                                   title: 'Success',
                                   dangerouslyUseHTMLString: true,

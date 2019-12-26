@@ -176,14 +176,26 @@ def app_main():
     @aiohttp_jinja2.template('invoke-service.html')
     async def invoke_service(request):
         list = []
-        logging.debug('/invoke-list response')
+        logging.debug('/invoke-service response')
         for service in controller.service_list.services:
             list.append({'value': Name.to_str(service.service_name), 'label': Name.to_str(service.service_name)})
         return {'service_list': list}
 
     @routes.post('/exec/invoke-service')
-    async def trigger_invocation(request):
-        return redirect('invoke-service', request)
+    async def exec_invoke_service(request):
+        r_json = await request.json()
+        name = r_json['service_name']
+        is_cmd = r_json['is_cmd']
+        data_or_cmd = r_json['data_or_cmd']
+
+        st_time = time.time()
+        ret = await controller.use_service(name, is_cmd, data_or_cmd)
+        ed_time = time.time()
+
+        response_time = '{:.3f}s'.format(ed_time - st_time)
+        print(response_time, ret)
+        ret['response_time'] = response_time
+        return web.json_response(ret)
 
     ### access control
     @routes.get('/access-control', name='access-control')
@@ -199,50 +211,26 @@ def app_main():
 
     @routes.post('/exec/update-access-rights')
     async def update_access_rights(request):
-        r_json = await request.json()
-        print(r_json['prefix'])
-        print(r_json['access_type'])
-        return redirect('access-control', request)
+        pass
 
-    @routes.get('/ndn-ping')
-    @aiohttp_jinja2.template('ndn-ping.html')
-    async def ndn_ping(request):
+    @routes.get('/send-interest')
+    @aiohttp_jinja2.template('send-interest.html')
+    async def send_interest(request):
         return
 
-    @routes.post('/exec/ndn-ping')
-    async def exec_ndn_ping(request):
-        controller.decode_crypto_public_key(controller.get_crypto_public_key(controller.system_anchor))
+    @routes.post('/exec/send-interest')
+    async def exec_send_interest(request):
         r_json = await request.json()
         name = r_json['name']
         can_be_prefix = r_json['can_be_prefix']
         must_be_fresh = r_json['must_be_fresh']
         signed_interest = r_json['signed_interest']
         param = r_json['application_parameter']
-        try:
-            interest_lifetime = float(r_json['interest_lifetime']) * 1000.0
-        except ValueError:
-            interest_lifetime = 4000.0
 
-        interest = Interest(name)
-        interest.canBePrefix = can_be_prefix
-        interest.mustBeFresh = must_be_fresh
-        interest.interestLifetimeMilliseconds = interest_lifetime
-        if param != '':
-            try:
-                interest.applicationParameters = int(param).to_bytes(1, 'little')
-            except ValueError:
-                pass
-        interest.appendParametersDigestToName()
-        if signed_interest:
-            data_parameter = Data(interest.name)
-            controller.keychain.sign(data_parameter, controller.system_anchor.getName())
-            data_parameter_blob_bytes = data_parameter.wireEncode().toBytes()
-            existing_parameter_bytes = interest.getApplicationParameters().toBytes()
-            whole_parameter_bytes = existing_parameter_bytes + data_parameter_blob_bytes
-            interest.setApplicationParameters(Blob(whole_parameter_bytes))
         st_time = time.time()
-        ret = await controller.express_interest(interest)
+        ret = await controller.express_interest(name, param, must_be_fresh, can_be_prefix, signed_interest)
         ed_time = time.time()
+
         response_time = '{:.3f}s'.format(ed_time - st_time)
         print(response_time, ret)
         ret['response_time'] = response_time
