@@ -12,9 +12,10 @@ from Cryptodome.Cipher import AES
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import DSS
 
-from ndn.security.signer import HmacSha256Signer, Sha256WithEcdsaSigner
+from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
-from ndn.encoding import InterestParam, BinaryStr, FormalName, SignaturePtrs, SignatureType, Name
+from ndn.encoding import InterestParam, BinaryStr, FormalName, SignaturePtrs, SignatureType, Name, Component
+from ndn.utils import timestamp
 from ndn.app import NDNApp
 
 from .db_storage import *
@@ -293,6 +294,8 @@ class Controller:
                     content_tlv.cipher = ct_bytes
                     self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
+        await asyncio.sleep(0.1)
+
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x01')],
                         validator=self.verify_device_ecdsa_signature)
         def on_access_control_dkey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
@@ -526,37 +529,53 @@ class Controller:
             return False
         return True
 
-    async def use_service(self, service: str, is_cmd: bool, name_or_cmd: str):
+    async def use_service(self, service: str, is_cmd: bool, name_or_cmd: str, param: str):
         service_name = Name.from_str(service)
         # service name: /home/SERVICE/room/device-ids
         # cmd interest name: /home/SERVICE/CMD/room/device-id/command
-        # notification interest name: /home/SERVICE/CMD/NOTIFY/room/device-id/command
+        # notification interest name: /home/SERVICE/NOTIFY/CMD/room/device-id/command
         # data fetching name: /home/SERVICE/DATA/room/device-id
         if is_cmd:
             service_name.insert(2, 'CMD')
             service_name = service_name + Name.from_str(name_or_cmd)
-            notification_name = service_name
-            notification_name.insert(3, 'NOTIFY')
-            if self.newly_pub_command is not None:
-                success = await self.app.unregister(self.newly_pub_command)
+            service_name.append(Component.from_timestamp(timestamp()))
+            notification_name = service_name[:]
+            notification_name.insert(2, 'NOTIFY')
+
+            need_register = False
+            need_unregister = False
+            if self.newly_pub_command is None:
+                need_register = True
+            elif Name.to_str(self.newly_pub_command[:3]) != Name.to_str(service_name[:3]):
+                need_register = True
+                need_unregister = True
+
+            if need_unregister:
+                success = await self.app.unregister(self.newly_pub_command[:3])
                 if not success:
                     logging.debug('cannot unregister prefix for command publish')
+
             self.newly_pub_command = service_name
+            logging.info(F'Publish new content Data packet {Name.to_str(self.newly_pub_command)}')
 
-            def on_service_fetch(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
-                logging.debug('received Interest to fetch newly published command')
-                self.app.put_data(self.newly_pub_command, identity=self.system_prefix)
-                return
+            if need_register:
+                def on_service_fetch(name: FormalName, int_param: InterestParam, app_param: Optional[BinaryStr]):
+                    logging.debug('received Interest to fetch newly published command')
+                    self.app.put_data(self.newly_pub_command, param.encode(), freshness_period=3000,
+                                      identity=self.system_prefix)
+                    return
 
-            success = await self.app.register(service_name, on_service_fetch)
-            if not success:
-                logging.debug('cannot register prefix for command publish')
-            coroutine = self.app.express_interest(service_name, must_be_fresh=True, can_be_prefix=True,
+                success = await self.app.register(service_name[:3], on_service_fetch)
+                if not success:
+                    logging.debug('cannot register prefix for command publish')
+
+            coroutine = self.app.express_interest(notification_name, must_be_fresh=True, can_be_prefix=True,
                                                   identity=self.system_prefix)
-            ret = {'name': service_name, 'response_type': 'Timeout'}
+            ret = {'name': Name.to_str(service_name), 'response_type': 'CommandPublished'}
         else:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
+            service_name.append(Component.from_timestamp(timestamp()))
             ret = await self.express_interest(service_name, '', True, True, True)
         return ret
 

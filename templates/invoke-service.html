@@ -36,6 +36,10 @@
       <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
     </el-form-item>
 
+    <el-form-item v-if="form.is_cmd == 'true'" label="Parameter">
+      <el-input v-model="form.param" style="width:75%"></el-input>
+    </el-form-item>
+
      <el-form-item v-else label="Content ID">
       <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
     </el-form-item>
@@ -70,8 +74,9 @@
       onSubmit(){
           console.log(this.form);
           axios.post('/exec/invoke-service', {service_name: this.form.service_name,
-                                        is_cmd: this.form.service_type,
-                                        data_or_cmd: this.form.data_or_cmd},{
+                                        is_cmd: this.form.is_cmd,
+                                        data_or_cmd: this.form.data_or_cmd,
+                                        param: this.form.param},{
                         headers: {'Content-Type': 'application/json'}
                         }).then(response=>{
                            ret = response.data;
@@ -95,6 +100,15 @@
                                   dangerouslyUseHTMLString: true,
                                   message: txt,
                                   type: 'error'
+                               });
+                           }else if (ret.response_type === 'CommandPublished'){
+                                txt = '<div>Name: ' + ret.name +'</div>' +
+                                      '<div>Command has been published</div>';
+                               this.$notify({
+                                  title: 'Command Published',
+                                  dangerouslyUseHTMLString: true,
+                                  message: txt,
+                                  type: 'success'
                                });
                            }else{
                                 txt = '<div>Response Time: ' + ret.response_time + '</div>' +

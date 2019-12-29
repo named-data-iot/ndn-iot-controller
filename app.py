@@ -187,9 +187,10 @@ def app_main():
         name = r_json['service_name']
         is_cmd = r_json['is_cmd']
         data_or_cmd = r_json['data_or_cmd']
+        param = r_json['param']
 
         st_time = time.time()
-        ret = await controller.use_service(name, is_cmd, data_or_cmd)
+        ret = await controller.use_service(name, is_cmd, data_or_cmd, param)
         ed_time = time.time()
 
         response_time = '{:.3f}s'.format(ed_time - st_time)
