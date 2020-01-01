@@ -9,6 +9,7 @@ from random import SystemRandom
 from typing import Optional
 
 from Cryptodome.Cipher import AES
+from Cryptodome.Util.Padding import pad
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import DSS
 
@@ -42,6 +43,7 @@ class Controller:
 
     def __init__(self, emit_func):
         self.newly_pub_command = None
+        self.newly_pub_payload = None
         self.wait_fetch_cmd_event = None
         self.emit = emit_func
         self.running = True
@@ -289,7 +291,7 @@ class Controller:
                     iv = urandom(16)
                     cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
                     ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
-                    content_tlv = EkeyDkeyResponse()
+                    content_tlv = CipherBlock()
                     content_tlv.iv = iv
                     content_tlv.cipher = ct_bytes
                     self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
@@ -311,7 +313,7 @@ class Controller:
                     iv = urandom(16)
                     cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
                     ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
-                    content_tlv = EkeyDkeyResponse()
+                    content_tlv = CipherBlock()
                     content_tlv.iv = iv
                     content_tlv.cipher = ct_bytes
                     self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
@@ -417,7 +419,7 @@ class Controller:
         ct_bytes = cipher.encrypt(private_key)
         logging.info('raw private key')
         logging.info(private_key)
-        logging.info('Symmetic Key')
+        logging.info('Symmetric Key')
         logging.info(self.boot_state['SharedKey'])
         # AES IV
         logging.info("IV:")
@@ -425,7 +427,7 @@ class Controller:
         logging.info("Cipher:")
         logging.info(ct_bytes)
         logging.info('Cipher length: ' + str(len(ct_bytes)))
-        # encrpted device private key with temporary symmetric key
+        # encrypted device private key with temporary symmetric key
         # ct = b64encode(ct_bytes)
 
         response = CertResponse()
@@ -530,11 +532,18 @@ class Controller:
         return True
 
     async def use_service(self, service: str, is_cmd: bool, name_or_cmd: str, param: str):
+        """
+        Use NDN-LITE service
+            cmd interest name: /home/SERVICE/CMD/room/device-id/command
+            notification interest name: /home/SERVICE/NOTIFY/CMD/room/device-id/command
+            data fetching name: /home/SERVICE/DATA/room/device-id
+        :param service: full service name, in the format of /home/SERVICE/room/device-id
+        :param is_cmd: whether to send a command to the service
+        :param name_or_cmd: the command id (if is_command is true) or the content-id (if is_cmd is false)
+        :param param: content payload or command parameters
+        :return: a dict object containing the state
+        """
         service_name = Name.from_str(service)
-        # service name: /home/SERVICE/room/device-ids
-        # cmd interest name: /home/SERVICE/CMD/room/device-id/command
-        # notification interest name: /home/SERVICE/NOTIFY/CMD/room/device-id/command
-        # data fetching name: /home/SERVICE/DATA/room/device-id
         if is_cmd:
             service_name.insert(2, 'CMD')
             service_name = service_name + Name.from_str(name_or_cmd)
@@ -556,12 +565,29 @@ class Controller:
                     logging.debug('cannot unregister prefix for command publish')
 
             self.newly_pub_command = service_name
+            self.newly_pub_payload = param.encode()
+            # find service
+            service_id = service_name[1][2]
+            logging.debug(f'Use service: {str(service_id)}')
+            encryption_key = None
+            for service_meta in self.service_list.service_meta_items:
+                if service_meta.service_id == service_id:
+                    encryption_key = service_meta.encryption_key
+            # AES encryption
+            iv = urandom(16)
+            cipher = AES.new(bytes(encryption_key), AES.MODE_CBC, iv)
+            ct_bytes = cipher.encrypt(pad(self.newly_pub_payload, 16))
+            content_tlv = CipherBlock()
+            content_tlv.iv = iv
+            content_tlv.cipher = ct_bytes
+            self.newly_pub_payload = content_tlv.encode()
+
             logging.info(F'Publish new content Data packet {Name.to_str(self.newly_pub_command)}')
 
             if need_register:
                 def on_service_fetch(name: FormalName, int_param: InterestParam, app_param: Optional[BinaryStr]):
                     logging.debug('received Interest to fetch newly published command')
-                    self.app.put_data(self.newly_pub_command, param.encode(), freshness_period=3000,
+                    self.app.put_data(self.newly_pub_command, self.newly_pub_payload, freshness_period=3000,
                                       identity=self.system_prefix)
                     return
 
@@ -576,7 +602,7 @@ class Controller:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
             service_name.append(Component.from_timestamp(timestamp()))
-            ret = await self.express_interest(service_name, '', True, True, True)
+            ret = await self.express_interest(Name.to_str(service_name), '', True, True, True)
         return ret
 
     async def express_interest(self, name: str, app_param: str, be_fresh: bool, be_prefix: bool, need_sig: bool):

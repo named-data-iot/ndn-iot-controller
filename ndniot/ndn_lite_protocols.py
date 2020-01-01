@@ -32,6 +32,6 @@ class CertResponse(TlvModel):
     cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
 
 # Access Control protocol
-class EkeyDkeyResponse(TlvModel):
+class CipherBlock(TlvModel):
     iv = BytesField(TLV_AC_AES_IV)
     cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)

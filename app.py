@@ -61,10 +61,14 @@ def app_main():
         metainfo.append({"information": "Available Services", "value": str(len(controller.service_list.services))})
         return {'metainfo': metainfo}
 
-    ### bootstrapping
     @routes.get('/bootstrapping')
     @aiohttp_jinja2.template('bootstrapping.html')
     async def bootstrapping(request):
+        """
+        bootstrapping
+        :param request: request from the HTTP request
+        :return: a HTTP JSON response
+        """
         secrets = list()
         for secret in controller.shared_secret_list.shared_secrets:
             secrets.append({'deviceIdentifier': str(bytes(secret.device_identifier).decode()),
