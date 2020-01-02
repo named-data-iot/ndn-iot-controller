@@ -152,12 +152,12 @@ def app_main():
             # controller.app.keychain.del_identity(data['deviceIdentityName'])
             os.system('ndnsec-delete ' + data['deviceIdentityName'])
         except KeyError:
-            pass # great, the key has already been removed
+            pass  # great, the key has already been removed
         # delete from database
         controller.device_list.devices = [device for device in controller.device_list.devices
                                           if Name.to_str(device.device_identity_name) != data['deviceIdentityName']]
         # delete service info
-        temp_name = Name.normalize(data['deviceIdentityName'])
+        temp_name = Name.from_str(data['deviceIdentityName'])
         controller.service_list.services = [service for service in controller.service_list.services
                                             if service.service_name[2:4] != temp_name[1:3]]
         return web.json_response({"st_code": 200})

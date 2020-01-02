@@ -1,5 +1,6 @@
 from ndn.encoding import TlvModel, BytesField, RepeatedField, ModelField, UintField, NameField
 
+
 class DeviceItem(TlvModel):
     device_id = BytesField(1)
     device_info = BytesField(2)
@@ -15,6 +16,7 @@ class ServiceItem(TlvModel):
     service_id = UintField(1)
     exp_time = UintField(2)
     service_name = NameField()
+
 
 class ServiceMetaItem(TlvModel):
     service_id = UintField(1)
