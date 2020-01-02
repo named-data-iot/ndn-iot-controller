@@ -290,6 +290,12 @@ class Controller:
                     # AES encryption
                     iv = urandom(16)
                     cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                    logging.debug('IV:')
+                    logging.debug(iv)
+                    logging.debug('AES KEY:')
+                    logging.debug(bytes(device.aes_key))
+                    logging.debug('Payload: ')
+                    logging.debug(bytes(service_meta.encryption_key))
                     ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
                     content_tlv = CipherBlock()
                     content_tlv.iv = iv
@@ -364,7 +370,7 @@ class Controller:
         # random 16 bytes for salt
         self.boot_state['Salt'] = urandom(16)
         ecdh.encrypt(self.boot_state['N1PublicKey'], self.boot_state['Salt'])
-        self.boot_state['SharedKey'] = ecdh.derived_key
+        self.boot_state['SharedAESKey'] = ecdh.derived_key
 
         response = SignOnResponse()
         response.salt = self.boot_state['Salt']
@@ -415,12 +421,12 @@ class Controller:
         cert = self.app.prepare_data(new_cert_name, cert.content, identity=self.system_prefix)
         # AES
         iv = urandom(16)
-        cipher = AES.new(self.boot_state['SharedKey'], AES.MODE_CBC, iv)
+        cipher = AES.new(self.boot_state['SharedAESKey'], AES.MODE_CBC, iv)
         ct_bytes = cipher.encrypt(private_key)
         logging.info('raw private key')
         logging.info(private_key)
         logging.info('Symmetric Key')
-        logging.info(self.boot_state['SharedKey'])
+        logging.info(self.boot_state['SharedAESKey'])
         # AES IV
         logging.info("IV:")
         logging.info(iv)
@@ -445,7 +451,7 @@ class Controller:
     async def bootstrapping(self):
         self.boot_state = {'DeviceIdentifier': None, 'DeviceCapability': None,
                            'N1PublicKey': None, 'N2PrivateKey': None, 'N2PublicKey': None,
-                           'SharedKey': None, 'Salt': None, 'TrustAnchorDigest': None,
+                           'SharedAESKey': None, 'Salt': None, 'TrustAnchorDigest': None,
                            'SharedPublicKey': None, 'SharedSymmetricKey': None, 'DeviceIdentityName': None,
                            'Success': False}
         self.boot_event = asyncio.Event()
@@ -462,7 +468,7 @@ class Controller:
             new_device.device_id = self.boot_state["DeviceIdentifier"]
             new_device.device_info = self.boot_state["DeviceCapability"]
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
-            new_device.aes_key = self.boot_state['SharedSymmetricKey']
+            new_device.aes_key = self.boot_state['SharedAESKey']
             self.device_list.devices.append(new_device)
             return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName']}
         return {'st_code': 500}
@@ -566,6 +572,7 @@ class Controller:
 
             self.newly_pub_command = service_name
             self.newly_pub_payload = param.encode()
+            logging.debug(f'New pub info: {param}')
             # find service
             service_id = service_name[1][2]
             logging.debug(f'Use service: {str(service_id)}')
@@ -573,6 +580,10 @@ class Controller:
             for service_meta in self.service_list.service_meta_items:
                 if service_meta.service_id == service_id:
                     encryption_key = service_meta.encryption_key
+            logging.debug('Encryption Key: ')
+            logging.debug(bytes(encryption_key))
+            logging.debug('Plaintext: ')
+            logging.debug(self.newly_pub_payload)
             # AES encryption
             iv = urandom(16)
             cipher = AES.new(bytes(encryption_key), AES.MODE_CBC, iv)
