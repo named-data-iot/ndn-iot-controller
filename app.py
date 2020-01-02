@@ -159,7 +159,7 @@ def app_main():
         # delete service info
         temp_name = Name.from_str(data['deviceIdentityName'])
         controller.service_list.services = [service for service in controller.service_list.services
-                                            if service.service_name[2:4] != temp_name[1:3]]
+                                            if Name.normalize(service.service_name)[2:4] != temp_name[1:3]]
         return web.json_response({"st_code": 200})
 
     ### service list
