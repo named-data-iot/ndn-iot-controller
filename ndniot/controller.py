@@ -9,7 +9,7 @@ from random import SystemRandom
 from typing import Optional
 
 from Cryptodome.Cipher import AES
-from Cryptodome.Util.Padding import pad
+from Cryptodome.Util.Padding import pad, unpad
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import DSS
 
@@ -550,6 +550,12 @@ class Controller:
         :return: a dict object containing the state
         """
         service_name = Name.from_str(service)
+        service_id = service_name[1][2]
+        logging.debug(f'Use service: {str(service_id)}')
+        encryption_key = None
+        for service_meta in self.service_list.service_meta_items:
+            if service_meta.service_id == service_id:
+                encryption_key = service_meta.encryption_key
         if is_cmd:
             service_name.insert(2, 'CMD')
             service_name = service_name + Name.from_str(name_or_cmd)
@@ -573,13 +579,6 @@ class Controller:
             self.newly_pub_command = service_name
             self.newly_pub_payload = param.encode()
             logging.debug(f'New pub info: {param}')
-            # find service
-            service_id = service_name[1][2]
-            logging.debug(f'Use service: {str(service_id)}')
-            encryption_key = None
-            for service_meta in self.service_list.service_meta_items:
-                if service_meta.service_id == service_id:
-                    encryption_key = service_meta.encryption_key
             logging.debug('Encryption Key: ')
             logging.debug(bytes(encryption_key))
             logging.debug('Plaintext: ')
@@ -613,6 +612,14 @@ class Controller:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
             ret = await self.express_interest(Name.to_str(service_name), param, True, True, True)
+            if ret['response_type'] == 'Data':
+                content = ret['content']
+                content = CipherBlock.parse(content)
+                iv = bytes(content.iv)
+                cipher = AES.new(bytes(encryption_key), AES.MODE_CBC, iv)
+                payload = cipher.decrypt(bytes(content.cipher))
+                payload = unpad(payload, 16)
+                ret['content'] = payload.decode()
         return ret
 
     async def express_interest(self, name: str, app_param: str, be_fresh: bool, be_prefix: bool, need_sig: bool):
@@ -640,7 +647,7 @@ class Controller:
             ret['name'] = Name.to_str(data_name)
             ret['freshness_period'] = meta_info.freshness_period
             ret['content_type'] = meta_info.content_type
-            ret['content'] = bytes(content).decode()
+            ret['content'] = bytes(content)
         return ret
 
     async def run(self):
