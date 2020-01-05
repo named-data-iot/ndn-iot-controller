@@ -612,19 +612,22 @@ class Controller:
         else:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
-            service_name.append(Component.from_timestamp(timestamp()))
-            ret = await self.express_interest(Name.to_str(service_name), '', True, True, True)
+            ret = await self.express_interest(Name.to_str(service_name), param, True, True, True)
         return ret
 
     async def express_interest(self, name: str, app_param: str, be_fresh: bool, be_prefix: bool, need_sig: bool):
         interest_name = Name.from_str(name)
         ret = {'name': name}
+        if len(app_param) is 0:
+            app_param = None
+        else:
+            app_param = app_param.encode()
         try:
             if need_sig:
-                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param.encode(),
+                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param,
                                                                         must_be_fresh=be_fresh, can_be_prefix=be_prefix)
             else:
-                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param.encode(),
+                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param,
                                                                         must_be_fresh=True,
                                                                         can_be_prefix=True, identity=self.system_prefix)
         except InterestNack as e:
@@ -637,7 +640,7 @@ class Controller:
             ret['name'] = Name.to_str(data_name)
             ret['freshness_period'] = meta_info.freshness_period
             ret['content_type'] = meta_info.content_type
-            ret['content'] = content.decode()
+            ret['content'] = bytes(content).decode()
         return ret
 
     async def run(self):

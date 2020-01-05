@@ -66,6 +66,7 @@
           service_name:'',
           is_cmd: false,
           data_or_cmd:'',
+          param:''
         },
         options: {{service_list | tojson}}
       }
@@ -114,10 +115,9 @@
                                 txt = '<div>Response Time: ' + ret.response_time + '</div>' +
                                       '<div>Response Type: ' + ret.response_type + '</div>' +
                                       '<div>Name: ' + ret.name + '</div>' +
-                                      '<div>Content Type: ' + ret.content_type + '</div>' +
+                                      '<div>Content: ' + ret.content + '</div>' +
                                       '<div>Freshness Period: ' + ret.freshness_period + '</div>' +
-                                      '<div>Final Block Id: ' + ret.final_block_id + '</div>' +
-                                      '<div>Signature Type: ' + ret.signature_type + '</div>';
+                                      '<div>Final Block Id: ' + ret.final_block_id + '</div>';
                                this.$notify({
                                   title: 'Success',
                                   dangerouslyUseHTMLString: true,
