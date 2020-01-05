@@ -79,7 +79,7 @@ def app_main():
         logging.info(secrets)
         return {'existing_shared_secrets': secrets}
 
-    ### trigger bootstrapping process
+    # trigger bootstrapping process
     @routes.post('/exec/bootstrapping')
     async def bootstrap_device(request):
         ret = await controller.bootstrapping()
@@ -87,13 +87,13 @@ def app_main():
         logging.info(ret)
         return web.json_response(ret)
 
-    ### room
+    # room
     @routes.get('/room')
     async def room(request):
         room_list = []
         return render_template("room.html", request, room_list= room_list)
 
-    ###add shared_secrets
+    # add shared_secrets
     @routes.post('/add/shared_secrets')
     async def add_shared_secrets(request):
         data = await request.post()
@@ -123,7 +123,7 @@ def app_main():
         res['st_code'] = 200
         return web.json_response(res)
 
-    ###delete shared_secrets
+    # delete shared_secrets
     @routes.post('/delete/shared_secrets')
     async def delete_shared_secrets(request):
         data = await request.json()
@@ -132,7 +132,7 @@ def app_main():
         return web.json_response({"st_code": 200})
 
 
-    ### device list
+    # device list
     @routes.get('/device-list')
     @aiohttp_jinja2.template('device-list.html')
     async def device_list(request):
@@ -162,7 +162,7 @@ def app_main():
                                             if Name.normalize(service.service_name)[2:4] != temp_name[1:3]]
         return web.json_response({"st_code": 200})
 
-    ### service list
+    # service list
     @routes.get('/service-list')
     @aiohttp_jinja2.template('service-list.html')
     async def service_list(request):
@@ -175,7 +175,7 @@ def app_main():
                          'expTime': datetime.utcfromtimestamp(tp).strftime('%Y-%m-%d %H:%M:%S')})
         return {'service_list': list}
 
-    ### service invocation
+    # service invocation
     @routes.get('/invoke-service', name='invoke-service')
     @aiohttp_jinja2.template('invoke-service.html')
     async def invoke_service(request):
@@ -202,7 +202,7 @@ def app_main():
         ret['response_time'] = response_time
         return web.json_response(ret)
 
-    ### access control
+    # access control
     @routes.get('/access-control', name='access-control')
     @aiohttp_jinja2.template('access-control.html')
     async def access_control(request):
@@ -247,6 +247,7 @@ def app_main():
         web.run_app(app, port=6060)
     finally:
         controller.save_db()
+
 
 if __name__ == '__main__':
     app_main()
