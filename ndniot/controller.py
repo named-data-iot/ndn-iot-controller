@@ -28,6 +28,7 @@ default_prefix = "ndn-iot"
 default_udp_multi_uri = "udp4://224.0.23.170:56363"
 controller_port = 6363
 
+
 class Controller:
     """
     NDN IoT Controller.
@@ -335,7 +336,11 @@ class Controller:
         if not app_param:
             logging.error("[SIGN ON]: interest has no parameter")
             return
+
+        m_measure_tp1 = time.time()
         request = SignOnRequest.parse(app_param)
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-INT1-PKT-DECODING: {m_measure_tp2 - m_measure_tp1}')
 
         if not request.identifier or not request.capabilities or not request.ecdh_n1:
             logging.error("[SIGN ON]: lack parameters in application parameters")
@@ -364,7 +369,12 @@ class Controller:
         m.update(self.system_anchor)
         self.boot_state['TrustAnchorDigest'] = m.digest()
         # ECDH
+
+        m_measure_tp1 = time.time()
         ecdh = ECDH()
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-INT1-ECDH-KEYGEN: {m_measure_tp2 - m_measure_tp1}')
+
         self.boot_state['N2PrivateKey'] = ecdh.prv_key.to_string()
         self.boot_state['N2PublicKey'] = ecdh.pub_key.to_string()
         # random 16 bytes for salt
@@ -377,11 +387,15 @@ class Controller:
         response.ecdh_n2 = self.boot_state['N2PublicKey']
         cert_bytes = parse_and_check_tl(self.system_anchor, TypeNumber.DATA)
         response.anchor = cert_bytes
-
+        m_measure_tp2 = time.time()
         logging.info(response.encode())
 
+        m_measure_tp1 = time.time()
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-DATA1-HMAC+ENCODING: {m_measure_tp2 - m_measure_tp1}')
+
         self.listen_to_cert_request = True
 
     def process_cert_request(self, name, app_param):
@@ -406,10 +420,13 @@ class Controller:
         # anchor signed certificate
         # create identity and key for the device
         # TODO Remove hardcoded livingroom and ask user for which room the device belongs to
+        m_measure_tp1 = time.time()
         device_name = '/' + self.system_prefix + '/livingroom' + '/' + bytes(request.identifier).decode()
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert().data
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-DATA2-ECDSA-KENGEN: {m_measure_tp2 - m_measure_tp1}')
 
         # re-sign certificate using anchor's key
         cert = parse_certificate(default_cert)
@@ -418,11 +435,20 @@ class Controller:
         new_cert_name.append('home')
         new_cert_name.append(Name.Component.from_version(SystemRandom().randint(10000000, 99999999)))
         logging.debug(new_cert_name)
+
+        m_measure_tp1 = time.time()
         cert = self.app.prepare_data(new_cert_name, cert.content, identity=self.system_prefix)
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-DATA2-ECDSA-RESIGN: {m_measure_tp2 - m_measure_tp1}')
+
+        m_measure_tp1 = time.time()
         # AES
         iv = urandom(16)
         cipher = AES.new(self.boot_state['SharedAESKey'], AES.MODE_CBC, iv)
         ct_bytes = cipher.encrypt(private_key)
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-DATA2-AES-ENC: {m_measure_tp2 - m_measure_tp1}')
+
         logging.info('raw private key')
         logging.info(private_key)
         logging.info('Symmetric Key')
@@ -442,11 +468,15 @@ class Controller:
         cert_bytes = parse_and_check_tl(cert, TypeNumber.DATA)
         response.id_cert = cert_bytes
 
+        m_measure_tp1 = time.time()
         signer = HmacSha256Signer('pre-shared', self.boot_state['SharedSymmetricKey'])
         self.app.put_data(name, response.encode(), freshness_period=3000, signer=signer)
+        m_measure_tp2 = time.time()
+        logging.debug(F'BOOTSTRAPPING-DATA2-ECDSA+ENCODING: {m_measure_tp2 - m_measure_tp1}')
         self.boot_state["DeviceIdentityName"] = device_name
         self.boot_state['Success'] = True
         self.boot_event.set()
+        # TODO: Publish certificates to repo, one cert for each service
 
     async def bootstrapping(self):
         self.boot_state = {'DeviceIdentifier': None, 'DeviceCapability': None,
@@ -470,7 +500,7 @@ class Controller:
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
             new_device.aes_key = self.boot_state['SharedAESKey']
             self.device_list.devices.append(new_device)
-            return {'st_code':200, 'device_id': self.boot_state['DeviceIdentityName']}
+            return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
         return {'st_code': 500}
 
     async def verify_device_ecdsa_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
@@ -520,7 +550,7 @@ class Controller:
                 pk = ECC.construct(curve='p256',
                                    point_x=int.from_bytes(pub_key_bytes[:32], byteorder='big'),
                                    point_y=int.from_bytes(pub_key_bytes[32:], byteorder='big'))
-                #pk = ECC.import_key(bytes(ss.public_key))
+                # pk = ECC.import_key(bytes(ss.public_key))
                 break
         if not pk:
             logging.error("[SIGN ON]: no pre-shared public key about the device")
@@ -557,6 +587,7 @@ class Controller:
             if service_meta.service_id == service_id:
                 encryption_key = service_meta.encryption_key
         if is_cmd:
+            logging.debug(F'******Command publish timestamp: {int(round(time.time() * 1000))}')
             service_name.insert(2, 'CMD')
             service_name = service_name + Name.from_str(name_or_cmd)
             service_name.append(Component.from_timestamp(timestamp()))
@@ -611,32 +642,53 @@ class Controller:
         else:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
-            ret = await self.express_interest(Name.to_str(service_name), param, True, True, True)
+            time1 = time.time()
+            ret = await self.express_interest(service_name, param.encode(), True, True, True)
+            time2 = time.time()
+            logging.debug(F'******Data Fetching Round Trip Time: {time2 - time1}s******')
             if ret['response_type'] == 'Data':
                 content = ret['content']
                 content = CipherBlock.parse(content)
                 iv = bytes(content.iv)
                 cipher = AES.new(bytes(encryption_key), AES.MODE_CBC, iv)
                 payload = cipher.decrypt(bytes(content.cipher))
+
+                time2 = time.time()
+                logging.debug(F'******Data Fetching Finish Time: {time2 - time1}s******')
+
                 payload = unpad(payload, 16)
                 ret['content'] = payload.decode()
         return ret
 
-    async def express_interest(self, name: str, app_param: str, be_fresh: bool, be_prefix: bool, need_sig: bool):
-        interest_name = Name.from_str(name)
-        ret = {'name': name}
-        if len(app_param) is 0:
-            app_param = None
-        else:
-            app_param = app_param.encode()
+    async def manage_policy_add(self, device_name: str, data_name: str, key_name: str, policy_name: str):
+        interest_name = Name.from_str(device_name)
+        interest_name.insert(1, 'POLICY')
+        interest_name = interest_name + Name.from_str(policy_name)
+        param = PolicyAddRequest()
+        param.data_name = data_name.encode()
+        param.key_name = key_name.encode()
+        time1 = time.time()
+        ret = await self.express_interest(interest_name, param.encode(), True, True, True)
+        time2 = time.time()
+        logging.debug(F'******Policy Update Round Trip Time: {time2 - time1}s******')
+        return ret
+
+    async def manage_policy_remove(self, policy_to_del):
+        pass
+
+    async def express_interest(self, name, app_param, be_fresh: bool, be_prefix: bool, need_sig: bool):
+        ret = {'name': Name.to_str(name)}
         try:
             if need_sig:
-                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param,
-                                                                        must_be_fresh=be_fresh, can_be_prefix=be_prefix)
+                data_name, meta_info, content = await self.app.express_interest(name, app_param,
+                                                                                must_be_fresh=be_fresh,
+                                                                                can_be_prefix=be_prefix)
             else:
-                data_name, meta_info, content = await self.app.express_interest(interest_name, app_param,
-                                                                        must_be_fresh=True,
-                                                                        can_be_prefix=True, identity=self.system_prefix)
+                data_name, meta_info, content = await self.app.express_interest(name, app_param,
+                                                                                must_be_fresh=True,
+                                                                                can_be_prefix=True,
+                                                                                identity=self.system_prefix,
+                                                                                validator=self.verify_device_ecdsa_signature)
         except InterestNack as e:
             ret['response_type'] = 'NetworkNack'
             ret['reason'] = e.reason

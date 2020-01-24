@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Service Invocation</title>
+    <title>Manage Policy</title>
     <link rel="stylesheet" href="../static/css/element-ui.css">
 </head>
 <body>
-<h2>Service Invocation</h2>
+<h2>Manage Policy</h2>
 
-<div id="invoke_service">
+<div id="manage_policy">
 
     <el-form label-position="left" label-width="120px" :model="form">
 
         <el-form-item label="Service To Invoke">
-            <el-select v-model="form.service_name" placeholder="Select" style="width:75%"
-                       no-data-text="No available services">
+            <el-select v-model="form.device_name" placeholder="Select" style="width:75%"
+                       no-data-text="No available devices">
                 <el-option
                         v-for="item in options"
                         :key="item.value"
@@ -25,27 +25,26 @@
         </el-form-item>
 
         <el-form-item label="Service Type">
-            <el-radio-group v-model="form.is_cmd">
-                <el-radio-button label="false">Data Fetching</el-radio-button>
-                <el-radio-button label="true">Issue Command</el-radio-button>
+            <el-radio-group v-model="form.add_policy">
+                <el-radio-button label="true">Allow New Policy</el-radio-button>
+                <el-radio-button label="false">Remove Policy</el-radio-button>
             </el-radio-group>
         </el-form-item>
 
-        <el-form-item v-if="form.is_cmd == 'true'" label="Command">
+        <el-form-item v-if="form.add_policy == 'true'" label="Data Name">
             <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
         </el-form-item>
 
-        <el-form-item v-if="form.is_cmd == 'true'" label="Parameter">
+        <el-form-item v-if="form.add_policy == 'true'" label="Key Name">
             <el-input v-model="form.param" style="width:75%"></el-input>
         </el-form-item>
 
-        <el-form-item v-else label="Content ID">
-            <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
+        <el-form-item label="Policy Name">
+            <el-input v-model="form.policy_name" style="width:75%"></el-input>
         </el-form-item>
 
         <el-form-item>
-            <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">express interest to
-                invoke service
+            <el-button type="primary" type="primary" size="small" round plain @click="onSubmit">Save
             </el-button>
         </el-form-item>
 
@@ -60,25 +59,28 @@
 <script src="../static/scripts/axios.min.js"></script>
 <script>
   new Vue({
-    el:'#invoke_service',
+    el:'#manage_policy',
     data(){
       return{
         form:{
-          service_name:'',
-          is_cmd: false,
-          data_or_cmd:'',
-          param:''
+          device_name:'',
+          add_policy: 'true',
+          data_name:'',
+          key_name:'',
+          policy_name:''
         },
-        options: {{service_list | tojson}}
+        options: {{device_list | tojson}}
       }
      },
     methods:{
       onSubmit(){
           console.log(this.form);
-          axios.post('/exec/invoke-service', {service_name: this.form.service_name,
-                                        is_cmd: this.form.is_cmd,
+          axios.post('/exec/manage-policy', {device_name: this.form.device_name,
+                                        add_policy: this.form.add_policy,
                                         data_or_cmd: this.form.data_or_cmd,
-                                        param: this.form.param},{
+                                        data_name: this.form.data_name,
+                                        key_name: this.form.key_name,
+                                        policy_name: this.form.policy_name},{
                         headers: {'Content-Type': 'application/json'}
                         }).then(response=>{
                            ret = response.data;
@@ -102,15 +104,6 @@
                                   dangerouslyUseHTMLString: true,
                                   message: txt,
                                   type: 'error'
-                               });
-                           }else if (ret.response_type === 'CommandPublished'){
-                                txt = '<div>Name: ' + ret.name +'</div>' +
-                                      '<div>Command has been published</div>';
-                               this.$notify({
-                                  title: 'Command Published',
-                                  dangerouslyUseHTMLString: true,
-                                  message: txt,
-                                  type: 'success'
                                });
                            }else{
                                 txt = '<div>Response Time: ' + ret.response_time + '</div>' +

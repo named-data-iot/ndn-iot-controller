@@ -233,7 +233,37 @@ def app_main():
         param = r_json['application_parameter']
 
         st_time = time.time()
-        ret = await controller.express_interest(name, param, must_be_fresh, can_be_prefix, signed_interest)
+        ret = await controller.express_interest(name, param.encode(), must_be_fresh, can_be_prefix, signed_interest)
+        ed_time = time.time()
+
+        response_time = '{:.3f}s'.format(ed_time - st_time)
+        print(response_time, ret)
+        ret['response_time'] = response_time
+        return web.json_response(ret)
+
+    @routes.get('/manage-policy', name='manage-policy')
+    @aiohttp_jinja2.template('manage-policy.html')
+    async def manage_policy(request):
+        ret = []
+        logging.debug('/invoke-service response')
+        for device in controller.device_list.devices:
+            ret.append({'value': Name.to_str(device.device_identity_name), 'label': Name.to_str(device.device_identity_name)})
+        return {'device_list': ret}
+
+    @routes.post('/exec/manage-policy')
+    async def exec_manage_policy(request):
+        r_json = await request.json()
+        device_name = r_json['device_name']
+        add_policy = r_json['add_policy']
+        data_name = r_json['data_name']
+        key_name = r_json['key_name']
+        policy_name = r_json['policy_name']
+
+        st_time = time.time()
+        if add_policy:
+            ret = await controller.manage_policy_add(device_name, data_name, key_name, policy_name)
+        else:
+            ret = await controller.manage_policy_remove(device_name, policy_name)
         ed_time = time.time()
 
         response_time = '{:.3f}s'.format(ed_time - st_time)
@@ -247,7 +277,6 @@ def app_main():
         web.run_app(app, port=6060)
     finally:
         controller.save_db()
-
 
 if __name__ == '__main__':
     app_main()
