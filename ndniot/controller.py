@@ -240,6 +240,7 @@ class Controller:
                     aes_key = urandom(16)
                     service_meta.encryption_key = aes_key
                     logging.debug('Add new service meta into the service list')
+                    logging.debug('AES key: ')
                     self.service_list.service_meta_items.append(service_meta)
 
         await asyncio.sleep(0.1)
@@ -291,11 +292,12 @@ class Controller:
                     # AES encryption
                     iv = urandom(16)
                     cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                    logging.debug('Use Device AES KEY to encrypt Service AES key')
                     logging.debug('IV:')
                     logging.debug(iv)
                     logging.debug('AES KEY:')
                     logging.debug(bytes(device.aes_key))
-                    logging.debug('Payload: ')
+                    logging.debug('Service AES Key: ')
                     logging.debug(bytes(service_meta.encryption_key))
                     ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
                     content_tlv = CipherBlock()
@@ -499,6 +501,8 @@ class Controller:
             new_device.device_info = self.boot_state["DeviceCapability"]
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
             new_device.aes_key = self.boot_state['SharedAESKey']
+            self.device_list.devices = [device for device in self.device_list.devices
+                                        if bytes(device.device_id) != self.boot_state["DeviceIdentifier"]]
             self.device_list.devices.append(new_device)
             return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
         return {'st_code': 500}
