@@ -32,11 +32,11 @@
         </el-form-item>
 
         <el-form-item v-if="form.add_policy == 'true'" label="Data Name">
-            <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
+            <el-input v-model="form.data_name" style="width:75%"></el-input>
         </el-form-item>
 
         <el-form-item v-if="form.add_policy == 'true'" label="Key Name">
-            <el-input v-model="form.param" style="width:75%"></el-input>
+            <el-input v-model="form.key_name" style="width:75%"></el-input>
         </el-form-item>
 
         <el-form-item label="Policy Name">
@@ -77,7 +77,6 @@
           console.log(this.form);
           axios.post('/exec/manage-policy', {device_name: this.form.device_name,
                                         add_policy: this.form.add_policy,
-                                        data_or_cmd: this.form.data_or_cmd,
                                         data_name: this.form.data_name,
                                         key_name: this.form.key_name,
                                         policy_name: this.form.policy_name},{

@@ -39,7 +39,7 @@
             <el-input v-model="form.param" style="width:75%"></el-input>
         </el-form-item>
 
-        <el-form-item v-else label="Content ID">
+        <el-form-item v-if="form.is_cmd == 'false'" label="Content ID">
             <el-input v-model="form.data_or_cmd" style="width:75%"></el-input>
         </el-form-item>
 
@@ -65,7 +65,7 @@
       return{
         form:{
           service_name:'',
-          is_cmd: false,
+          is_cmd: 'false',
           data_or_cmd:'',
           param:''
         },

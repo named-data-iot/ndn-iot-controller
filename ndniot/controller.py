@@ -567,7 +567,7 @@ class Controller:
             return False
         return True
 
-    async def use_service(self, service: str, is_cmd: bool, name_or_cmd: str, param: str):
+    async def use_service(self, service: str, is_cmd: str, name_or_cmd: str, param: str):
         """
         Use NDN-LITE service
             cmd interest name: /home/SERVICE/CMD/room/device-id/command
@@ -586,7 +586,7 @@ class Controller:
         for service_meta in self.service_list.service_meta_items:
             if service_meta.service_id == service_id:
                 encryption_key = service_meta.encryption_key
-        if is_cmd:
+        if is_cmd == 'true':
             logging.debug(F'******Command publish timestamp: {int(round(time.time() * 1000))}')
             service_name.insert(2, 'CMD')
             service_name = service_name + Name.from_str(name_or_cmd)
@@ -643,7 +643,7 @@ class Controller:
             service_name.insert(2, 'DATA')
             service_name = service_name + Name.from_str(name_or_cmd)
             time1 = time.time()
-            ret = await self.express_interest(service_name, param.encode(), True, True, True)
+            ret = await self.express_interest(service_name, None, True, True, False)
             time2 = time.time()
             logging.debug(F'******Data Fetching Round Trip Time: {time2 - time1}s******')
             if ret['response_type'] == 'Data':
@@ -682,13 +682,14 @@ class Controller:
             if need_sig:
                 data_name, meta_info, content = await self.app.express_interest(name, app_param,
                                                                                 must_be_fresh=be_fresh,
-                                                                                can_be_prefix=be_prefix)
-            else:
-                data_name, meta_info, content = await self.app.express_interest(name, app_param,
-                                                                                must_be_fresh=True,
-                                                                                can_be_prefix=True,
+                                                                                can_be_prefix=be_prefix,
                                                                                 identity=self.system_prefix,
                                                                                 validator=self.verify_device_ecdsa_signature)
+            else:
+                data_name, meta_info, content = await self.app.express_interest(name, app_param,
+                                                                                must_be_fresh=be_fresh,
+                                                                                can_be_prefix=be_prefix)
+
         except InterestNack as e:
             ret['response_type'] = 'NetworkNack'
             ret['reason'] = e.reason
@@ -699,7 +700,7 @@ class Controller:
             ret['name'] = Name.to_str(data_name)
             ret['freshness_period'] = meta_info.freshness_period
             ret['content_type'] = meta_info.content_type
-            ret['content'] = bytes(content)
+            ret['content'] = content
         return ret
 
     async def run(self):
