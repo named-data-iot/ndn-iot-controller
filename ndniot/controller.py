@@ -492,9 +492,6 @@ class Controller:
             await asyncio.wait_for(self.boot_event.wait(), timeout=8.0)
         except asyncio.TimeoutError:
             self.boot_event.set()
-        self.boot_event = None
-        self.listen_to_boot_request = False
-        self.listen_to_cert_request = False
         if self.boot_state['Success']:
             new_device = DeviceItem()
             new_device.device_id = self.boot_state["DeviceIdentifier"]
@@ -505,6 +502,10 @@ class Controller:
                                         if bytes(device.device_id) != self.boot_state["DeviceIdentifier"]]
             self.device_list.devices.append(new_device)
             return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
+        await asyncio.sleep(1)
+        self.boot_event = None
+        self.listen_to_boot_request = False
+        self.listen_to_cert_request = False
         return {'st_code': 500}
 
     async def verify_device_ecdsa_signature(self, name: FormalName, sig: SignaturePtrs) -> bool:
