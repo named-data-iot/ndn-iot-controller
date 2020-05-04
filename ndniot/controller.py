@@ -279,53 +279,68 @@ class Controller:
         await asyncio.sleep(0.1)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x00')],
-                        validator=self.verify_device_ecdsa_signature)
-        def on_access_control_ekey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+                        validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
+        def on_access_control_ekey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs: SignaturePtrs):
             target_service = name[-2]
             logging.debug(bytes(target_service))
             target_service = bytes(target_service)[-1]
             logging.debug('target service id: %s', str(target_service))
             for service_meta in self.service_list.service_meta_items:
                 if service_meta.service_id == target_service:
-                    # TODO encrypt the content when signature info can be accessed in onInterest callback
-                    device = self.device_list.devices[0]
-                    # AES encryption
-                    iv = urandom(16)
-                    cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
-                    logging.debug('Use Device AES KEY to encrypt Service AES key')
-                    logging.debug('IV:')
-                    logging.debug(iv)
-                    logging.debug('AES KEY:')
-                    logging.debug(bytes(device.aes_key))
-                    logging.debug('Service AES Key: ')
-                    logging.debug(bytes(service_meta.encryption_key))
-                    ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
-                    content_tlv = CipherBlock()
-                    content_tlv.iv = iv
-                    content_tlv.cipher = ct_bytes
-                    self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
+                    sig_info = sig_ptrs.signature_info
+                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+                    logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
+                    for device in self.device_list.devices:
+                        if Name.to_str(identity) ==  Name.to_str(device.device_identity_name):
+                            logging.debug("Find corresponding idenity from the list")
+                            logging.debug("Using identity's AES key to encrypt EK response")
+                            iv = urandom(16)
+                            cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                            logging.debug('Use Device AES KEY to encrypt Service AES key')
+                            logging.debug('IV:')
+                            logging.debug(iv)
+                            logging.debug('AES KEY:')
+                            logging.debug(bytes(device.aes_key))
+                            logging.debug('Service AES Key: ')
+                            logging.debug(bytes(service_meta.encryption_key))
+                            ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                            content_tlv = CipherBlock()
+                            content_tlv.iv = iv
+                            content_tlv.cipher = ct_bytes
+                            self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
         await asyncio.sleep(0.1)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x01')],
-                        validator=self.verify_device_ecdsa_signature)
-        def on_access_control_dkey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+                        validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
+        def on_access_control_dkey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs):
             target_service = name[-2]
             logging.debug(bytes(target_service))
             target_service = bytes(target_service)[-1]
             logging.debug('target service id: %s', str(target_service))
             for service_meta in self.service_list.service_meta_items:
                 if service_meta.service_id == target_service:
-                    # TODO encrypt the content when signature info can be accessed in onInterest callback
-                    device = self.device_list.devices[0]
-                    # AES encryption
-                    iv = urandom(16)
-                    cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
-                    ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
-                    content_tlv = CipherBlock()
-                    content_tlv.iv = iv
-                    content_tlv.cipher = ct_bytes
-                    self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
+                    sig_info = sig_ptrs.signature_info
+                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+                    logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
+                    for device in self.device_list.devices:
+                        if Name.to_str(identity) ==  Name.to_str(device.device_identity_name):
+                            logging.debug("Find corresponding idenity from the list")
+                            logging.debug("Using identity's AES key to encrypt DK response")
+                            iv = urandom(16)
+                            cipher = AES.new(bytes(device.aes_key), AES.MODE_CBC, iv)
+                            logging.debug('Use Device AES KEY to encrypt Service AES key')
+                            logging.debug('IV:')
+                            logging.debug(iv)
+                            logging.debug('AES KEY:')
+                            logging.debug(bytes(device.aes_key))
+                            logging.debug('Service AES Key: ')
+                            logging.debug(bytes(service_meta.encryption_key))
+                            ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                            content_tlv = CipherBlock()
+                            content_tlv.iv = iv
+                            content_tlv.cipher = ct_bytes
+                            self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
     def process_sign_on_request(self, name, app_param):
         """
