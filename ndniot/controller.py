@@ -156,8 +156,8 @@ class Controller:
         else:
             logging.fatal("Cannot set up the strategy for IoT prefix")
 
-        @self.app.route('/ndn/sign-on', validator=self.verify_device_sign_on_ecdsa_signature)
-        def on_sign_on_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
+        @self.app.route('/ndn/sign-on', validator=self.verify_device_sign_on_ecdsa_signature, need_sig_ptrs=True)
+        def on_sign_on_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs: SignaturePtrs):
             """
             OnInterest callback when there is a security bootstrapping request
 
@@ -169,7 +169,7 @@ class Controller:
             """
             if not self.listen_to_boot_request:
                 return
-            self.process_sign_on_request(name, app_param)
+            self.process_sign_on_request(name, app_param, sig_ptrs)
 
         await asyncio.sleep(0.1)
 
@@ -291,7 +291,7 @@ class Controller:
                     identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
                     logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
                     for device in self.device_list.devices:
-                        if Name.to_str(identity) ==  Name.to_str(device.device_identity_name):
+                        if Name.to_str(identity) == Name.to_str(device.device_identity_name):
                             logging.debug("Find corresponding idenity from the list")
                             logging.debug("Using identity's AES key to encrypt EK response")
                             iv = urandom(16)
@@ -324,7 +324,7 @@ class Controller:
                     identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
                     logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
                     for device in self.device_list.devices:
-                        if Name.to_str(identity) ==  Name.to_str(device.device_identity_name):
+                        if Name.to_str(identity) == Name.to_str(device.device_identity_name):
                             logging.debug("Find corresponding idenity from the list")
                             logging.debug("Using identity's AES key to encrypt DK response")
                             iv = urandom(16)
@@ -342,14 +342,23 @@ class Controller:
                             content_tlv.cipher = ct_bytes
                             self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
-    def process_sign_on_request(self, name, app_param):
+    def process_sign_on_request(self, name, app_param, sig_ptrs):
         """
         Process device's sign on request.
 
         :param name: Interest packet name
         :param app_param: Interest application parameters
         """
-        logging.info("[SIGN ON]: interest received")
+
+        # check if the device has already signed on
+        sig_info = sig_ptrs.signature_info
+        identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+        logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
+        for device in self.device_list.devices:
+            if Name.to_str(identity) == Name.to_str(device.device_identity_name):
+                logging.debug("The device has already bootstrapped")
+                return
+
         if not app_param:
             logging.error("[SIGN ON]: interest has no parameter")
             return
