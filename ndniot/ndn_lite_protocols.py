@@ -9,6 +9,7 @@ TLV_AC_AES_IV = 135
 TLV_AC_ENCRYPTED_PAYLOAD = 136
 TLV_POLICY_DATA_STR = 140
 TLV_POLICY_KEY_STR = 141
+TLV_SSP_DEVICE_CAPABILITIES = 143
 
 # Security Sign On protocol
 class SignOnRequest(TlvModel):
@@ -28,7 +29,7 @@ class CertRequest(TlvModel):
     ecdh_n2 = BytesField(TLV_AC_ECDH_PUB_N2)
     anchor_digest = BytesField(TLV_SEC_BOOT_ANCHOR_DIGEST)
     ecdh_n1 = BytesField(TLV_AC_ECDH_PUB_N1)
-
+    capabilities = BytesField(TLV_SSP_DEVICE_CAPABILITIES)
 
 class CertResponse(TlvModel):
     id_cert = BytesField(TypeNumber.DATA)

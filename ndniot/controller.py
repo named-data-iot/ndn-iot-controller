@@ -288,7 +288,7 @@ class Controller:
             for service_meta in self.service_list.service_meta_items:
                 if service_meta.service_id == target_service:
                     sig_info = sig_ptrs.signature_info
-                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-5:-2]
                     logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
                     for device in self.device_list.devices:
                         if Name.to_str(identity) == Name.to_str(device.device_identity_name):
@@ -321,7 +321,7 @@ class Controller:
             for service_meta in self.service_list.service_meta_items:
                 if service_meta.service_id == target_service:
                     sig_info = sig_ptrs.signature_info
-                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+                    identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-5:-2]
                     logging.debug('Extract signing identity id from key id: %s', Name.to_str(identity))
                     for device in self.device_list.devices:
                         if Name.to_str(identity) == Name.to_str(device.device_identity_name):
@@ -437,6 +437,8 @@ class Controller:
         logging.info(bytes(request.ecdh_n2))
         logging.info(bytes(request.anchor_digest))
         logging.info(bytes(request.ecdh_n1))
+        logging.info("decode the capability")
+        logging.info(bytes(request.capabilities))
         if bytes(request.identifier) != self.boot_state['DeviceIdentifier'] or \
                 bytes(request.ecdh_n2) != self.boot_state['N2PublicKey'] or \
                 bytes(request.anchor_digest) != self.boot_state['TrustAnchorDigest'] or \
@@ -447,7 +449,7 @@ class Controller:
         # create identity and key for the device
         # TODO Remove hardcoded livingroom and ask user for which room the device belongs to
         m_measure_tp1 = time.time()
-        device_name = '/' + self.system_prefix + '/livingroom' + '/' + bytes(request.identifier).decode()
+        device_name = '/' + self.system_prefix + '/' + bytes(request.capabilities).decode() + '/livingroom' + '/' + bytes(request.identifier).decode()
         device_key = self.app.keychain.touch_identity(device_name).default_key()
         private_key = get_prv_key_from_safe_bag(device_name)
         default_cert = device_key.default_cert().data
@@ -504,14 +506,17 @@ class Controller:
         self.boot_event.set()
         # TODO: Publish certificates to repo, one cert for each service
 
-    async def bootstrapping(self):
-        self.boot_state = {'DeviceIdentifier': None, 'DeviceCapability': None,
-                           'N1PublicKey': None, 'N2PrivateKey': None, 'N2PublicKey': None,
-                           'SharedAESKey': None, 'Salt': None, 'TrustAnchorDigest': None,
-                           'SharedPublicKey': None, 'SharedSymmetricKey': None, 'DeviceIdentityName': None,
-                           'Success': False}
-        self.boot_event = asyncio.Event()
-        self.listen_to_boot_request = True
+    async def bootstrapping(self, boot_state = None):
+        if boot_state != None:
+            self.boot_state = boot_state
+        else:
+            self.boot_state = {'DeviceIdentifier': None, 'DeviceCapability': None,
+                               'N1PublicKey': None, 'N2PrivateKey': None, 'N2PublicKey': None,
+                               'SharedAESKey': None, 'Salt': None, 'TrustAnchorDigest': None,
+                               'SharedPublicKey': None, 'SharedSymmetricKey': None, 'DeviceIdentityName': None,
+                               'Success': False, 'CurrentCert': 0}
+            self.boot_event = asyncio.Event()
+            self.listen_to_boot_request = True
         try:
             await asyncio.wait_for(self.boot_event.wait(), timeout=8.0)
         except asyncio.TimeoutError:
@@ -522,10 +527,20 @@ class Controller:
             new_device.device_info = self.boot_state["DeviceCapability"]
             new_device.device_identity_name = self.boot_state["DeviceIdentityName"]
             new_device.aes_key = self.boot_state['SharedAESKey']
-            self.device_list.devices = [device for device in self.device_list.devices
-                                        if bytes(device.device_id) != self.boot_state["DeviceIdentifier"]]
+            # self.device_list.devices = [device for device in self.device_list.devices
+            #                             if bytes(device.device_id) != self.boot_state["DeviceIdentifier"]]
             self.device_list.devices.append(new_device)
-            return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
+            # if having more than one capabilities, setting up bootstrappping again
+            self.boot_state['CurrentCert'] += 1
+            logging.info("CurrentCert is")
+            logging.info(self.boot_state['CurrentCert'])
+            if len(bytes(self.boot_state["DeviceCapability"])) > 1 and \
+               self.boot_state['CurrentCert'] < len(bytes(self.boot_state["DeviceCapability"])):
+                logging.info("device has more capabilities")
+                self.boot_state['Success'] = False
+                await self.bootstrapping(self.boot_state)
+            else:            
+                return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
         await asyncio.sleep(1)
         self.boot_event = None
         self.listen_to_boot_request = False
@@ -540,7 +555,7 @@ class Controller:
             return False
         if not covered_part or not sig_value:
             return False
-        identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-4:-2]
+        identity = [sig_info.key_locator.name[0]] + sig_info.key_locator.name[-5:-2]
         logging.debug('Extract identity id from key id: %s', Name.to_str(identity))
         key_bits = None
         try:
