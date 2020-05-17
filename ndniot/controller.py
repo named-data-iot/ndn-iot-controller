@@ -164,8 +164,6 @@ class Controller:
             :param name: Interest packet name
             :param param: Interest parameters
             :app_param: Interest application paramters
-
-            TODO:Verifying the signature
             """
             if not self.listen_to_boot_request:
                 return
@@ -181,8 +179,6 @@ class Controller:
             :param name: Interest packet name
             :param param: Interest parameters
             :app_param: Interest application paramters
-
-            TODO:Verifying the signature
             """
             if not self.listen_to_cert_request:
                 return
@@ -202,7 +198,6 @@ class Controller:
 
             Packet format: prefix = /<home-prefix>/<SD=1>/<ADV=0>/device-id
             App Parameter format:
-            TODO:Verifying the signature
             """
             locator = name[3:-1]
             logging.debug("Adv Interest sender locator: %s", Name.to_str(locator))
@@ -254,7 +249,6 @@ class Controller:
             :param name: Interest packet name
             :param param: Interest parameters
             :app_param: Interest application paramters
-            TODO:Verifying the signature
             """
             logging.info("Service query from device")
             if app_param is None:
