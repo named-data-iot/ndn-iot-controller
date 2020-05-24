@@ -1,4 +1,4 @@
-from ndn.encoding import TlvModel, BytesField, TypeNumber
+from ndn.encoding import TlvModel, BytesField, UintField, TypeNumber
 
 TLV_SEC_BOOT_ANCHOR_DIGEST = 161
 TLV_SEC_BOOT_CAPABILITIES = 160
@@ -7,6 +7,7 @@ TLV_AC_ECDH_PUB_N2 = 163
 TLV_AC_SALT = 131
 TLV_AC_AES_IV = 135
 TLV_AC_ENCRYPTED_PAYLOAD = 136
+TLV_AC_KEYID = 129
 TLV_POLICY_DATA_STR = 140
 TLV_POLICY_KEY_STR = 141
 TLV_SSP_DEVICE_CAPABILITIES = 143
@@ -45,4 +46,9 @@ class PolicyAddRequest(TlvModel):
 # Access Control protocol
 class CipherBlock(TlvModel):
     iv = BytesField(TLV_AC_AES_IV)
+    keyid = UintField(TLV_AC_KEYID)
     cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
+
+# Access Control protocol
+class KeyInfo(TlvModel):
+    keyid = UintField(TLV_AC_KEYID)

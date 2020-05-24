@@ -297,7 +297,9 @@ class Controller:
                             logging.debug(bytes(device.aes_key))
                             logging.debug('Service AES Key: ')
                             logging.debug(bytes(service_meta.encryption_key))
-                            ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                            keyinfo = KeyInfo()
+                            keyinfo.keyid = 65540
+                            ct_bytes = cipher.encrypt(pad((bytes(service_meta.encryption_key) + bytes(keyinfo.encode())), 16))
                             content_tlv = CipherBlock()
                             content_tlv.iv = iv
                             content_tlv.cipher = ct_bytes
@@ -330,7 +332,9 @@ class Controller:
                             logging.debug(bytes(device.aes_key))
                             logging.debug('Service AES Key: ')
                             logging.debug(bytes(service_meta.encryption_key))
-                            ct_bytes = cipher.encrypt(bytes(service_meta.encryption_key))
+                            keyinfo = KeyInfo()
+                            keyinfo.keyid = 65540
+                            ct_bytes = cipher.encrypt(pad((bytes(service_meta.encryption_key) + bytes(keyinfo.encode())), 16))
                             content_tlv = CipherBlock()
                             content_tlv.iv = iv
                             content_tlv.cipher = ct_bytes
@@ -467,7 +471,7 @@ class Controller:
         # AES
         iv = urandom(16)
         cipher = AES.new(self.boot_state['SharedAESKey'], AES.MODE_CBC, iv)
-        ct_bytes = cipher.encrypt(private_key)
+        ct_bytes = cipher.encrypt(pad(private_key, 16))
         m_measure_tp2 = time.time()
         logging.debug(F'BOOTSTRAPPING-DATA2-AES-ENC: {m_measure_tp2 - m_measure_tp1}')
 
@@ -631,6 +635,7 @@ class Controller:
             service_name.append(Component.from_timestamp(timestamp()))
             notification_name = service_name[:]
             notification_name.insert(2, 'NOTIFY')
+            logging.debug('notification name is %s', Name.to_str(notification_name))
 
             need_register = False
             need_unregister = False
