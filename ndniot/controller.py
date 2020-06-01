@@ -16,7 +16,7 @@ from Cryptodome.Signature import DSS
 from ndn.security.signer import HmacSha256Signer
 from ndn.app_support.security_v2 import parse_certificate
 from ndn.encoding import InterestParam, BinaryStr, FormalName, SignaturePtrs, SignatureType, Name, Component
-from ndn.utils import timestamp
+from ndn.utils import timestamp, gen_nonce
 from ndn.app import NDNApp
 
 from .db_storage import *
@@ -169,7 +169,7 @@ class Controller:
                 return
             self.process_sign_on_request(name, app_param, sig_ptrs)
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.01)
 
         @self.app.route(self.system_prefix + '/cert', validator=self.verify_device_sign_on_ecdsa_signature)
         def on_cert_request_interest(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr]):
@@ -234,11 +234,15 @@ class Controller:
                     service_meta.service_id = sid
                     aes_key = urandom(16)
                     service_meta.encryption_key = aes_key
+                    service_meta.key_id = 65540
+                   # service_meta.key_id = gen_nonce()
                     logging.debug('Add new service meta into the service list')
                     logging.debug('AES key: ')
                     self.service_list.service_meta_items.append(service_meta)
+                    # update keyid on minute-level
+                    asyncio.ensure_future(self.update_key_id(service_meta, 60))
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.01)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x02'), bytearray(b'\x08\x01\x00')],
                         validator=self.verify_device_ecdsa_signature)
@@ -270,11 +274,12 @@ class Controller:
             else:
                 logging.debug("Don't have services needed by the device, won't reply")
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.01)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x00')],
                         validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
         def on_access_control_ekey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs: SignaturePtrs):
+            logging.debug(F'******EKEY Timestamp*****: {int(round(time.time() * 1000))}')
             target_service = name[-2]
             logging.debug(bytes(target_service))
             target_service = bytes(target_service)[-1]
@@ -298,14 +303,16 @@ class Controller:
                             logging.debug('Service AES Key: ')
                             logging.debug(bytes(service_meta.encryption_key))
                             keyinfo = KeyInfo()
-                            keyinfo.keyid = 65540
+                            # keyinfo.keyid = 65540
+                            keyinfo.keyid = service_meta.key_id
+                            logging.debug('Service Key ID: %u', service_meta.key_id)
                             ct_bytes = cipher.encrypt(pad((bytes(service_meta.encryption_key) + bytes(keyinfo.encode())), 16))
                             content_tlv = CipherBlock()
                             content_tlv.iv = iv
                             content_tlv.cipher = ct_bytes
                             self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.01)
 
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x01')],
                         validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
@@ -333,7 +340,9 @@ class Controller:
                             logging.debug('Service AES Key: ')
                             logging.debug(bytes(service_meta.encryption_key))
                             keyinfo = KeyInfo()
-                            keyinfo.keyid = 65540
+                            # keyinfo.keyid = 65540
+                            keyinfo.keyid = service_meta.key_id
+                            logging.debug('Service Key ID: %u', service_meta.key_id)
                             ct_bytes = cipher.encrypt(pad((bytes(service_meta.encryption_key) + bytes(keyinfo.encode())), 16))
                             content_tlv = CipherBlock()
                             content_tlv.iv = iv
@@ -539,7 +548,7 @@ class Controller:
                 await self.bootstrapping(self.boot_state)
             else:            
                 return {'st_code': 200, 'device_id': self.boot_state['DeviceIdentityName']}
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.01)
         self.boot_event = None
         self.listen_to_boot_request = False
         self.listen_to_cert_request = False
@@ -745,6 +754,22 @@ class Controller:
             ret['content_type'] = meta_info.content_type
             ret['content'] = content
         return ret
+
+    async def update_key_id(self, service_meta: ServiceMetaItem, timeout):
+        logging.debug("Watch on service %u", service_meta.service_id)
+        while True:
+            await asyncio.sleep(timeout)
+            # /[home-prefix]/NDN_SD_AC/NOTIFY/[service-id]/keyid
+            # notification_name = [self.system_prefix, bytearray(b'\x08\x01\x03'), b'\x08\x01' + bytes([service_meta.service_id])]
+            notification_name = [self.system_prefix, bytearray(b'\x08\x01\x03'), b'\x08\x01' + bytes([service_meta.service_id]), str(service_meta.key_id)]
+            notification_name.insert(2, 'NOTIFY')
+            # notification_name.insert(4, str(service_meta.key_id))
+            coroutine = self.app.express_interest(notification_name, must_be_fresh=True, can_be_prefix=True,
+                                                  identity=self.system_prefix)
+            service_meta.key_id += 1
+            logging.debug('notification: %s', Name.to_str(notification_name))
+            logging.debug("Watch on service %u, update key_id to %u", service_meta.service_id, service_meta.key_id)
+            logging.debug(F'******Update Timestamp*****: {int(round(time.time() * 1000))}')
 
     async def run(self):
         logging.info("Restarting app...")

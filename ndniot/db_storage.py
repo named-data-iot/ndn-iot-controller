@@ -20,6 +20,7 @@ class ServiceItem(TlvModel):
 
 class ServiceMetaItem(TlvModel):
     service_id = UintField(1)
+    key_id = UintField(2)
     encryption_key = BytesField(3)
 
 
