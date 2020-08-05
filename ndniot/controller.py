@@ -349,6 +349,17 @@ class Controller:
                             content_tlv.cipher = ct_bytes
                             self.app.put_data(name, content_tlv.encode(), freshness_period=3000, identity=self.system_prefix)
 
+        await asyncio.sleep(0.01)
+            
+    async def add_client_connectivity(self):
+        face_list = await query_face_id(self.app, 'fd', fuzzy_query=True)
+        for face in face_list.face_status:
+            ret = await add_route(self.app, self.system_prefix, face.face_id)
+            if ret is True:
+                logging.info("Successfully add route.")
+            else:
+                logging.fatal("Cannot set up the route for IoT prefix")
+
     def process_sign_on_request(self, name, app_param, sig_ptrs):
         """
         Process device's sign on request.
@@ -512,6 +523,9 @@ class Controller:
         self.boot_state['Success'] = True
         self.boot_event.set()
         # TODO: Publish certificates to repo, one cert for each service
+
+        # finally, add route to all unix stream faces
+        asyncio.ensure_future(self.add_client_connectivity())
 
     async def bootstrapping(self, boot_state = None):
         if boot_state != None:

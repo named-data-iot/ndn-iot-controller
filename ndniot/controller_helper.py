@@ -45,10 +45,13 @@ def get_prv_key_from_safe_bag(id_name):
 ###################################
 
 
-async def query_face_id(app, uri):
+async def query_face_id(app, uri, fuzzy_query=False):
     query_filter = FaceQueryFilter()
     query_filter.face_query_filter = FaceQueryFilterValue()
-    query_filter.face_query_filter.uri = uri.encode('utf-8')
+    if not fuzzy_query:
+        query_filter.face_query_filter.uri = uri.encode('utf-8')
+    else:
+        query_filter.face_query_filter.uri_scheme = uri.encode('utf-8')
     query_filter_msg = query_filter.encode()
     name = Name.from_str("/localhost/nfd/faces/query") + [Component.from_bytes(query_filter_msg)]
     try:
@@ -58,7 +61,11 @@ async def query_face_id(app, uri):
         return None
     ret = FaceStatusMsg.parse(data)
     logging.info(ret)
-    return ret.face_status[0].face_id
+
+    if not fuzzy_query:
+        return ret.face_status[0].face_id
+    else:
+        return ret
 
 
 async def add_route(app, name: str, face_id: int):

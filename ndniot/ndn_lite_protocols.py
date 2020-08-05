@@ -43,12 +43,11 @@ class PolicyAddRequest(TlvModel):
     key_name = BytesField(TLV_POLICY_KEY_STR)
 
 
-# Access Control protocol
+# Access Control Protocol
 class CipherBlock(TlvModel):
     iv = BytesField(TLV_AC_AES_IV)
     keyid = UintField(TLV_AC_KEYID)
     cipher = BytesField(TLV_AC_ENCRYPTED_PAYLOAD)
 
-# Access Control protocol
 class KeyInfo(TlvModel):
     keyid = UintField(TLV_AC_KEYID)
