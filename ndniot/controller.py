@@ -239,8 +239,8 @@ class Controller:
                     logging.debug('Add new service meta into the service list')
                     logging.debug('AES key: ')
                     self.service_list.service_meta_items.append(service_meta)
-                    # update keyid on minute-level
-                    asyncio.ensure_future(self.update_key_id(service_meta, 60))
+                    # update keyid on hour-level
+                    asyncio.ensure_future(self.update_key_id(service_meta, 600))
 
         await asyncio.sleep(0.01)
 
