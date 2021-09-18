@@ -280,7 +280,8 @@ class Controller:
                         validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
         def on_access_control_ekey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs: SignaturePtrs):
             logging.debug(F'******EKEY Timestamp*****: {int(round(time.time() * 1000))}')
-            target_service = name[-2]
+            #target_service = name[-2]    #original
+            target_service = name[-3]   # use [-3] because name was added with /device-id/
             logging.debug(bytes(target_service))
             target_service = bytes(target_service)[-1]
             logging.debug('target service id: %s', str(target_service))
@@ -317,7 +318,8 @@ class Controller:
         @self.app.route([self.system_prefix, bytearray(b'\x08\x01\x03'), bytearray(b'\x08\x01\x01')],
                         validator=self.verify_device_ecdsa_signature, need_sig_ptrs=True)
         def on_access_control_dkey_request(name: FormalName, param: InterestParam, app_param: Optional[BinaryStr], sig_ptrs):
-            target_service = name[-2]
+            #target_service = name[-2]    #original
+            target_service = name[-3]   # use [-3] because name was added with /device-id/
             logging.debug(bytes(target_service))
             target_service = bytes(target_service)[-1]
             logging.debug('target service id: %s', str(target_service))
